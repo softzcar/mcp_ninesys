@@ -25,8 +25,10 @@ export const CB_COOLDOWN_MS = Number(process.env.API_CB_COOLDOWN_MS || 30_000);
 // cambian poco → 10 min, galería 5 min.
 export const CACHE_TTL = {
   catalog: 2 * 60 * 1000,
-  orders: 3 * 60 * 1000,
-  customer: 3 * 60 * 1000,
+  // Órdenes SIN caché: el saldo/estado cambian al registrar abonos y el personal
+  // consulta en tiempo real. Cachear daría saldos viejos o "no existe" obsoletos.
+  orders: 0,
+  customer: 60 * 1000,
   fabrics: 10 * 60 * 1000,
   sizes: 10 * 60 * 1000,
   businessHours: 10 * 60 * 1000,
