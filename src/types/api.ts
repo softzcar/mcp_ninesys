@@ -70,6 +70,13 @@ export interface OrdersByPhoneResponse {
   ordenes?: Order[];
 }
 
+export interface OrderByIdResponse {
+  found: boolean;
+  customer_id?: number;
+  customer_name?: string;
+  orden?: Order;
+}
+
 export interface BusinessHours {
   horaInicioManana: number | string;
   horaFinManana: number | string;

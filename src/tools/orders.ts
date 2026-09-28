@@ -1,11 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { apiGet } from "../services/apiClient.js";
 import { cached } from "../services/cache.js";
 import { CACHE_TTL } from "../constants.js";
 import { phone, responseFormat } from "../schemas/inputs.js";
 import { ok, guard } from "./helpers.js";
 import type { RequestContext } from "./index.js";
-import type { OrdersByPhoneResponse, Order } from "../types/api.js";
+import type { OrdersByPhoneResponse, OrderByIdResponse, Order } from "../types/api.js";
 
 const money = (n: number) => `$${Number(n).toFixed(2)}`;
 const fmtDate = (s: string | null) => {
@@ -118,6 +119,62 @@ Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y 
         parts.push("", "== Ya pagadas / sin deuda ==", ...sinDeuda.map(formatOrder));
       }
       return ok(parts.join("\n"), structured);
+    })
+  );
+
+  server.registerTool(
+    "ninesys_get_order_by_id",
+    {
+      title: "Obtener una orden por su número (id)",
+      description: `Devuelve UNA orden concreta por su número/id, con su estado, fecha de entrega, total, abonos, descuentos, saldo pendiente, productos y el nombre del cliente dueño.
+
+Úsala cuando se pregunta por una orden específica por su número (ej: "estado de la orden 1234", "cuánto falta por pagar de la orden #58", "qué tiene la orden 320"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+
+Args:
+  - id_orden (number): número/id de la orden.
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+
+Devuelve: { found, customer_name, orden: { id_orden, status, fecha_entrega, pago_total, total_abonos, total_descuentos, saldo_pendiente, productos } }. Si la orden no existe en esta empresa, found=false.`,
+      inputSchema: {
+        id_orden: z
+          .number()
+          .int()
+          .positive()
+          .describe("Número/id de la orden a consultar."),
+        response_format: responseFormat,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guard("ninesys_get_order_by_id", async (args) => {
+      const { id_orden, response_format } = args as {
+        id_orden: number;
+        response_format: "markdown" | "json";
+      };
+      const data = await cached(
+        `order:${id_empresa}:${id_orden}`,
+        CACHE_TTL.orders,
+        () => apiGet<OrderByIdResponse>(`/internal/ordenes/${id_empresa}/by-id`, id_empresa, { id: id_orden })
+      );
+
+      if (!data || !data.found || !data.orden) {
+        return ok(`No se encontró la orden #${id_orden} en la empresa ${id_empresa}.`, { found: false });
+      }
+
+      const structured = {
+        found: true,
+        customer_name: data.customer_name,
+        orden: data.orden as unknown as Record<string, unknown>,
+      };
+      if (response_format === "json") {
+        return ok(JSON.stringify(structured, null, 2), structured);
+      }
+      const header = `Orden #${data.orden.id_orden}${data.customer_name ? ` — ${data.customer_name}` : ""} (empresa ${id_empresa}):`;
+      return ok([header, "", formatOrder(data.orden)].join("\n"), structured);
     })
   );
 }
