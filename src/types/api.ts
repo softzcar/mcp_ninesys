@@ -32,6 +32,19 @@ export interface CatalogResponse {
   products: CatalogProduct[];
 }
 
+export interface CustomerSearchRow {
+  _id: number;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  cedula: string;
+  email: string;
+}
+export interface CustomerSearchResponse {
+  count: number;
+  customers: CustomerSearchRow[];
+}
+
 export interface CustomerByPhoneResponse {
   found: boolean;
   customer?: {
