@@ -20,20 +20,20 @@ export const BACKOFF_BASE_MS = 400;
 export const CB_FAIL_THRESHOLD = Number(process.env.API_CB_THRESHOLD || 5);
 export const CB_COOLDOWN_MS = Number(process.env.API_CB_COOLDOWN_MS || 30_000);
 
-// Cache TTL en memoria por recurso (ms). Valores heredados de los clientes
-// actuales de msg_ninesys: catálogo 2 min, órdenes 3 min, telas/tallas/horario
-// cambian poco → 10 min, galería 5 min.
+// SIN caché de datos (todos los TTL en 0). Decisión de producto: el asistente
+// debe reflejar SIEMPRE el estado real en vivo. Cachear daría respuestas
+// obsoletas — un producto recién creado que "no existe", un abono ya hecho que
+// figura como impago, etc. El volumen de consultas internas es bajo y el circuit
+// breaker/timeout ya protegen contra fallos de la API.
 export const CACHE_TTL = {
-  catalog: 2 * 60 * 1000,
-  // Órdenes SIN caché: el saldo/estado cambian al registrar abonos y el personal
-  // consulta en tiempo real. Cachear daría saldos viejos o "no existe" obsoletos.
+  catalog: 0,
   orders: 0,
-  customer: 60 * 1000,
-  fabrics: 10 * 60 * 1000,
-  sizes: 10 * 60 * 1000,
-  businessHours: 10 * 60 * 1000,
-  galleryImages: 5 * 60 * 1000,
-  galleryCategories: 10 * 60 * 1000,
+  customer: 0,
+  fabrics: 0,
+  sizes: 0,
+  businessHours: 0,
+  galleryImages: 0,
+  galleryCategories: 0,
 } as const;
 
 // Límite de caracteres para respuestas en texto (evita inundar el contexto del LLM).
