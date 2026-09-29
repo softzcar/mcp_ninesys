@@ -48,6 +48,47 @@ export interface CustomerSearchResponse {
   customers: CustomerSearchRow[];
 }
 
+// Convención para que el chat muestre imágenes: cualquier tool puede devolver
+// structuredContent.images = ChatImage[]. El agente las recoge (nunca del texto).
+export interface ChatImage {
+  url: string;
+  caption: string;
+}
+
+export interface DesignRevision {
+  _id: number;
+  revision: number | null;
+  tipo: string;
+  estatus: string;
+  url_image: string | null;
+  detalles: string | null;
+  fecha: string;
+  id_product: number | null;
+}
+export interface OrderDesignsResponse {
+  found: boolean;
+  id_orden?: number;
+  revisiones?: DesignRevision[];
+}
+export interface PendingDesign {
+  _id: number;
+  id_orden: number;
+  revision: number | null;
+  tipo: string;
+  url_image: string;
+  detalles: string | null;
+  fecha: string;
+  status_orden: string;
+  cliente: string;
+}
+export interface PendingDesignsResponse {
+  count: number;
+  pendientes: PendingDesign[];
+}
+export interface CdnApprovedResponse {
+  url: string;
+}
+
 export interface StatementOrder {
   id_orden: number;
   status: string;

@@ -50,15 +50,15 @@ Devuelve: { count, categories: [{ name, count }] }.`,
     "ninesys_list_gallery_images",
     {
       title: "Listar imágenes de galería de un producto",
-      description: `Devuelve las URLs de las imágenes de galería de un producto/categoría de la empresa.
+      description: `Devuelve las imágenes de galería (fotos/modelos) de un producto o categoría de la empresa.
 
-Úsala cuando el cliente quiere ver fotos o modelos de un producto (ej: "muéstrame franelas", "tienen fotos de gorras"). Devuelve URLs listas para enviar. NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala cuando se quiere ver fotos o modelos de un producto (ej: "muéstrame franelas", "fotos de gorras"). Las imágenes se muestran automáticamente en el chat debajo de tu respuesta: NO escribas ni pegues URLs. NO crea ni modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - product (string): nombre del producto o categoría de galería (ej: "franela", "gorra"). El CDN hace coincidencia por prefijo (singular/plural).
   - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
-Devuelve: { product, count, images: string[] }. Si no hay imágenes, count=0.`,
+Devuelve: { product, count, urls: string[], images: [{url, caption}] }. Si no hay imágenes, count=0.`,
       inputSchema: {
         product: z
           .string()
@@ -78,13 +78,18 @@ Devuelve: { product, count, images: string[] }. Si no hay imágenes, count=0.`,
       const data = await cached(`gimg:${id_empresa}:${term}`, CACHE_TTL.galleryImages, () =>
         cdnGet<GalleryImagesResponse>({ action: "catalog", id_empresa, product: term })
       );
-      const images = Array.isArray(data?.images) ? data.images : [];
-      const structured = { product: term, count: images.length, images };
-      if (!images.length) {
+      const urls = Array.isArray(data?.images) ? data.images : [];
+      // Tope para no saturar el chat; `urls` conserva la lista completa.
+      const images = urls.slice(0, 12).map((url, i) => ({ url, caption: `${product} — foto ${i + 1}` }));
+      const structured = { product: term, count: urls.length, urls, images };
+      if (!urls.length) {
         return ok(`No hay imágenes de "${product}" en la galería de la empresa ${id_empresa}.`, structured);
       }
       if (response_format === "json") return ok(JSON.stringify(structured, null, 2), structured);
-      const text = [`Imágenes de "${product}" (${images.length}):`, "", ...images.map((u) => `- ${u}`)].join("\n");
+      const text =
+        `Hay ${urls.length} foto(s) de "${product}" en la galería` +
+        (urls.length > images.length ? ` (se muestran las primeras ${images.length})` : "") +
+        ". Se muestran automáticamente en el chat; no pegues URLs.";
       return ok(text, structured);
     })
   );
