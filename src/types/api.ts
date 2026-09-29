@@ -123,6 +123,12 @@ export interface StatementAdjustment {
 }
 export interface AccountStatementResponse {
   found: boolean;
+  motivo?: "orden_no_existe" | "cliente_no_existe" | "id_no_coincide_con_nombre";
+  nombre_dado?: string;
+  nombre_del_id?: string;
+  customer_id?: number;
+  id_orden?: number | null;
+  advertencia?: string | null;
   customer?: { _id: number; nombre: string; phone: string; cedula: string };
   resumen?: {
     ordenes_listadas: number;

@@ -93,7 +93,7 @@ Devuelve: { found, customer: { _id, first_name, last_name, cedula, phone, email,
       title: "Buscar clientes por nombre",
       description: `Busca clientes de la empresa por su NOMBRE COMPLETO (o parte), en cualquier orden. Funciona con "nombre apellido" juntos (ej. "maria arrieta"), nombres compuestos e ignora tildes. También busca por teléfono, cédula o email.
 
-Úsala cuando se pregunta por un cliente por su nombre. Cada resultado trae el ID del cliente (_id), cuántas órdenes en curso tiene y su última orden. Con el ID puedes llamar a ninesys_get_account_statement (customer_id). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala cuando se pregunta por un cliente por su nombre. Cada resultado trae el ID del cliente (_id), cuántas órdenes en curso tiene y su última orden. Con ese ID (nunca uno inventado) puedes llamar a ninesys_get_account_statement (customer_id + nombre_cliente). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
 
 REGLA CUANDO HAY VARIAS COINCIDENCIAS: el usuario normalmente SOLO conoce el nombre del cliente. NUNCA le pidas teléfono, cédula ni email. Muéstrale la lista con el ID, el nombre completo, las órdenes en curso y la última orden de cada uno, y pídele que responda con el ID del cliente que le interesa. Cuando responda con un ID, úsalo directamente como customer_id.
 
@@ -175,17 +175,41 @@ Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, emai
 
 Órdenes incluidas: todas las que NO están entregadas ni canceladas (en cualquier estado), más las entregadas que aún tienen deuda. Las entregadas ya pagadas solo si se pide su historial (incluir_entregadas_pagadas=true). Las canceladas nunca.
 
-Si solo tienes el NOMBRE del cliente, usa antes ninesys_search_customers para obtener su _id y pásalo como customer_id. Si la búsqueda devuelve varios clientes, NO pidas teléfono ni cédula: muestra la lista con ID y nombre y pide al usuario el ID. Si el usuario responde con un número de ID de cliente, pásalo como customer_id.
+CÓMO IDENTIFICAR AL CLIENTE (en este orden):
+1. Si la pregunta menciona un NÚMERO DE ORDEN, pasa id_orden: el sistema deduce el cliente a partir de la orden y muestra esa orden (en cualquier estado). No necesitas customer_id.
+2. Si solo tienes el NOMBRE, llama PRIMERO a ninesys_search_customers y usa el _id que devuelva como customer_id. Si hay varios, muestra la lista con ID y nombre y pide al usuario el ID (nunca teléfono ni cédula).
+3. PROHIBIDO INVENTAR O ADIVINAR un customer_id. Solo usa IDs que aparecieron en esta conversación (resultado de ninesys_search_customers o escritos por el usuario).
+Siempre que el usuario haya dicho un nombre, pásalo en nombre_cliente: el sistema verifica que el customer_id corresponda a esa persona y, si no coincide, no devuelve datos.
 
 Args:
-  - customer_id (number, opcional): _id del cliente (de ninesys_search_customers). Preferido.
-  - phone (string, opcional): teléfono en dígitos. Se requiere customer_id o phone.
+  - id_orden (number, opcional): número de orden. Preferido si el usuario lo menciona.
+  - customer_id (number, opcional): _id del cliente obtenido de ninesys_search_customers.
+  - nombre_cliente (string, opcional): nombre del cliente tal como lo escribió el usuario (para verificar el ID).
+  - phone (string, opcional): teléfono en dígitos.
+  Se requiere id_orden, customer_id o phone.
   - incluir_entregadas_pagadas (boolean, default false): incluir órdenes entregadas ya saldadas.
   - response_format ('markdown' | 'json').
 
 Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los recalcules ni sumes la lista de pagos. Los pagos marcados como "posible duplicado" no cuentan en el saldo: menciónalos como registros a revisar, no como pagos.`,
       inputSchema: {
-        customer_id: z.number().int().positive().optional().describe("_id del cliente (preferido)."),
+        id_orden: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Número de orden: el sistema deduce el cliente. Preferido si el usuario lo menciona."),
+        customer_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("_id del cliente obtenido de ninesys_search_customers. NUNCA inventado."),
+        nombre_cliente: z
+          .string()
+          .trim()
+          .max(120)
+          .optional()
+          .describe("Nombre del cliente tal como lo escribió el usuario, para verificar el customer_id."),
         phone: z
           .string()
           .trim()
@@ -206,22 +230,27 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
       },
     },
     guard("ninesys_get_account_statement", async (args) => {
-      const { customer_id, phone: tel, incluir_entregadas_pagadas, response_format } = args as {
-        customer_id?: number;
-        phone?: string;
-        incluir_entregadas_pagadas: boolean;
-        response_format: "markdown" | "json";
-      };
-      if (!customer_id && !tel) {
+      const { id_orden, customer_id, nombre_cliente, phone: tel, incluir_entregadas_pagadas, response_format } =
+        args as {
+          id_orden?: number;
+          customer_id?: number;
+          nombre_cliente?: string;
+          phone?: string;
+          incluir_entregadas_pagadas: boolean;
+          response_format: "markdown" | "json";
+        };
+      if (!id_orden && !customer_id && !tel) {
         return ok(
-          "Falta identificar al cliente: indica customer_id (obtenlo con ninesys_search_customers) o phone.",
+          "Falta identificar al cliente: indica id_orden, o el customer_id obtenido con ninesys_search_customers, o phone.",
           { found: false }
         );
       }
 
       const params: Record<string, unknown> = {};
+      if (id_orden) params.id_orden = id_orden;
       if (customer_id) params.customer_id = customer_id;
-      else params.phone = tel;
+      if (!id_orden && !customer_id && tel) params.phone = tel;
+      if (nombre_cliente) params.nombre = nombre_cliente;
       if (incluir_entregadas_pagadas) params.incluir_entregadas_pagadas = 1;
 
       const data = await apiGet<AccountStatementResponse>(
@@ -230,8 +259,26 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
         params
       );
 
-      if (!data || !data.found || !data.customer || !data.resumen) {
-        return ok(`No se encontró el cliente en la empresa ${id_empresa}.`, { found: false });
+      if (data && !data.found) {
+        if (data.motivo === "id_no_coincide_con_nombre") {
+          return ok(
+            `ERROR DE IDENTIFICACIÓN: el customer_id ${data.customer_id} corresponde a ${data.nombre_del_id}, ` +
+              `NO a "${data.nombre_dado}". No se devolvieron datos. No inventes IDs: llama a ` +
+              `ninesys_search_customers con el nombre "${data.nombre_dado}" y usa el _id que devuelva.`,
+            { found: false, motivo: data.motivo }
+          );
+        }
+        if (data.motivo === "orden_no_existe") {
+          return ok(`No existe la orden #${id_orden} en la empresa ${id_empresa}.`, { found: false, motivo: data.motivo });
+        }
+        return ok(
+          `No existe un cliente con ese identificador en la empresa ${id_empresa}. No inventes IDs: ` +
+            `busca al cliente por nombre con ninesys_search_customers.`,
+          { found: false, motivo: data.motivo || "cliente_no_existe" }
+        );
+      }
+      if (!data || !data.customer || !data.resumen) {
+        return ok(`No se pudo obtener el estado de cuenta en la empresa ${id_empresa}.`, { found: false });
       }
 
       const structured = data as unknown as Record<string, unknown>;
@@ -245,7 +292,12 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
       const ajustes = data.ajustes || [];
       const out: string[] = [];
 
-      out.push(`Estado de cuenta — ${data.customer.nombre} (tel ${data.customer.phone || "-"})`);
+      out.push(
+        data.id_orden
+          ? `Pagos de la orden #${data.id_orden} — cliente ${data.customer.nombre} (ID ${data.customer._id}, tel ${data.customer.phone || "-"})`
+          : `Estado de cuenta — ${data.customer.nombre} (ID ${data.customer._id}, tel ${data.customer.phone || "-"})`
+      );
+      if (data.advertencia) out.push(`⚠ ${data.advertencia}`);
       out.push("");
       out.push("== Resumen ==");
       out.push(`  Órdenes listadas: ${r.ordenes_listadas}`);
