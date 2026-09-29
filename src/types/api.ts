@@ -45,6 +45,55 @@ export interface CustomerSearchResponse {
   customers: CustomerSearchRow[];
 }
 
+export interface StatementOrder {
+  id_orden: number;
+  status: string;
+  fecha_creacion: string | null;
+  fecha_entrega: string | null;
+  pago_total: number;
+  total_abonos: number;
+  total_descuentos: number;
+  total_notas_credito: number;
+  saldo_pendiente: number;
+  entregada_con_deuda: boolean;
+}
+export interface StatementPayment {
+  fecha: string;
+  id_orden: number;
+  metodo_pago: string;
+  moneda: string;
+  monto: number;
+  tasa: number;
+  monto_base: number;
+  referencia: string | null;
+  tipo_de_pago: string | null;
+  verificado: boolean;
+}
+export interface StatementAdjustment {
+  fecha: string;
+  id_orden: number;
+  descuento: number;
+  nota_credito: number;
+  detalle: string | null;
+}
+export interface AccountStatementResponse {
+  found: boolean;
+  customer?: { _id: number; nombre: string; phone: string; cedula: string };
+  resumen?: {
+    ordenes_listadas: number;
+    total_facturado: number;
+    total_abonado: number;
+    total_descuentos: number;
+    total_notas_credito: number;
+    saldo_total_pendiente: number;
+    entregadas_con_deuda: number;
+    pagos_sin_verificar: number;
+  };
+  ordenes?: StatementOrder[];
+  pagos?: StatementPayment[];
+  ajustes?: StatementAdjustment[];
+}
+
 export interface CustomerByPhoneResponse {
   found: boolean;
   customer?: {

@@ -6,7 +6,22 @@ import { CACHE_TTL } from "../constants.js";
 import { phone, responseFormat } from "../schemas/inputs.js";
 import { ok, guard } from "./helpers.js";
 import type { RequestContext } from "./index.js";
-import type { CustomerByPhoneResponse, CustomerSearchResponse } from "../types/api.js";
+import type {
+  CustomerByPhoneResponse,
+  CustomerSearchResponse,
+  AccountStatementResponse,
+} from "../types/api.js";
+
+const money = (n: number) => `$${Number(n).toFixed(2)}`;
+const fmtDate = (s: string | null) => {
+  if (!s) return "-";
+  const d = new Date(s.replace(" ", "T"));
+  return isNaN(d.getTime())
+    ? s
+    : d.toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric" });
+};
+const fmtMonto = (monto: number, moneda: string) =>
+  /d[oó]lar/i.test(moneda) ? money(monto) : `${Number(monto).toFixed(2)} ${moneda}`;
 
 export function registerCustomerTools(server: McpServer, ctx: RequestContext): void {
   const { idEmpresa: id_empresa } = ctx;
@@ -131,6 +146,145 @@ Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, emai
         }),
       ];
       return ok(lines.join("\n"), structured);
+    })
+  );
+
+  server.registerTool(
+    "ninesys_get_account_statement",
+    {
+      title: "Estado de cuenta de un cliente",
+      description: `Devuelve el ESTADO DE CUENTA de un cliente: resumen (facturado, abonado, descuentos, saldo total pendiente), las órdenes relevantes con su saldo, y el detalle de cada PAGO/ABONO (fecha, número de orden, método de pago, moneda, monto, tasa, equivalente en $, referencia y si está verificado por caja), más descuentos y notas de crédito.
+
+Úsala para: "estado de cuenta de X", "qué abonos ha hecho", "cuándo pagó", "con qué método pagó", "a qué órdenes corresponden sus pagos", "pagos pendientes de verificar". NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+
+Órdenes incluidas: todas las que NO están entregadas ni canceladas (en cualquier estado), más las entregadas que aún tienen deuda. Las entregadas ya pagadas solo si se pide su historial (incluir_entregadas_pagadas=true). Las canceladas nunca.
+
+Si solo tienes el NOMBRE del cliente, usa antes ninesys_search_customers para obtener su _id y pásalo como customer_id. Si tienes el teléfono, puedes pasar phone.
+
+Args:
+  - customer_id (number, opcional): _id del cliente (de ninesys_search_customers). Preferido.
+  - phone (string, opcional): teléfono en dígitos. Se requiere customer_id o phone.
+  - incluir_entregadas_pagadas (boolean, default false): incluir órdenes entregadas ya saldadas.
+  - response_format ('markdown' | 'json').
+
+Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los recalcules.`,
+      inputSchema: {
+        customer_id: z.number().int().positive().optional().describe("_id del cliente (preferido)."),
+        phone: z
+          .string()
+          .trim()
+          .regex(/^\d{7,15}$/, "El teléfono debe tener entre 7 y 15 dígitos.")
+          .optional()
+          .describe("Teléfono del cliente en solo dígitos (alternativa a customer_id)."),
+        incluir_entregadas_pagadas: z
+          .boolean()
+          .default(false)
+          .describe("Incluir también órdenes entregadas ya pagadas (solo si se pide el historial)."),
+        response_format: responseFormat,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guard("ninesys_get_account_statement", async (args) => {
+      const { customer_id, phone: tel, incluir_entregadas_pagadas, response_format } = args as {
+        customer_id?: number;
+        phone?: string;
+        incluir_entregadas_pagadas: boolean;
+        response_format: "markdown" | "json";
+      };
+      if (!customer_id && !tel) {
+        return ok(
+          "Falta identificar al cliente: indica customer_id (obtenlo con ninesys_search_customers) o phone.",
+          { found: false }
+        );
+      }
+
+      const params: Record<string, unknown> = {};
+      if (customer_id) params.customer_id = customer_id;
+      else params.phone = tel;
+      if (incluir_entregadas_pagadas) params.incluir_entregadas_pagadas = 1;
+
+      const data = await apiGet<AccountStatementResponse>(
+        `/internal/clientes/${id_empresa}/estado-cuenta`,
+        id_empresa,
+        params
+      );
+
+      if (!data || !data.found || !data.customer || !data.resumen) {
+        return ok(`No se encontró el cliente en la empresa ${id_empresa}.`, { found: false });
+      }
+
+      const structured = data as unknown as Record<string, unknown>;
+      if (response_format === "json") {
+        return ok(JSON.stringify(data, null, 2), structured);
+      }
+
+      const r = data.resumen;
+      const ordenes = data.ordenes || [];
+      const pagos = data.pagos || [];
+      const ajustes = data.ajustes || [];
+      const out: string[] = [];
+
+      out.push(`Estado de cuenta — ${data.customer.nombre} (tel ${data.customer.phone || "-"})`);
+      out.push("");
+      out.push("== Resumen ==");
+      out.push(`  Órdenes listadas: ${r.ordenes_listadas}`);
+      out.push(`  Total facturado: ${money(r.total_facturado)} | Abonado: ${money(r.total_abonado)}`);
+      if (r.total_descuentos > 0) out.push(`  Descuentos: ${money(r.total_descuentos)}`);
+      if (r.total_notas_credito > 0) out.push(`  Notas de crédito: ${money(r.total_notas_credito)}`);
+      out.push(`  SALDO TOTAL PENDIENTE: ${money(r.saldo_total_pendiente)}`);
+      if (r.entregadas_con_deuda > 0) out.push(`  ⚠ Órdenes entregadas con deuda: ${r.entregadas_con_deuda}`);
+      if (r.pagos_sin_verificar > 0) out.push(`  ⚠ Pagos pendientes de verificar: ${r.pagos_sin_verificar}`);
+
+      out.push("");
+      out.push("== Órdenes ==");
+      if (!ordenes.length) {
+        out.push("  (Sin órdenes en curso ni entregadas con deuda.)");
+      } else {
+        for (const o of ordenes) {
+          out.push(
+            `  Orden #${o.id_orden} — ${o.status}${o.entregada_con_deuda ? " (ENTREGADA CON DEUDA)" : ""}` +
+              ` | creada ${fmtDate(o.fecha_creacion)} | entrega ${fmtDate(o.fecha_entrega)}`
+          );
+          out.push(
+            `    Total ${money(o.pago_total)} | Abonado ${money(o.total_abonos)}` +
+              (o.total_descuentos > 0 ? ` | Desc. ${money(o.total_descuentos)}` : "") +
+              ` | Saldo ${money(o.saldo_pendiente)}`
+          );
+        }
+      }
+
+      out.push("");
+      out.push("== Pagos (más recientes primero) ==");
+      if (!pagos.length) {
+        out.push("  (Sin pagos registrados en estas órdenes.)");
+      } else {
+        for (const p of pagos) {
+          const eq = /d[oó]lar/i.test(p.moneda) ? "" : ` (≈ ${money(p.monto_base)} a tasa ${p.tasa})`;
+          out.push(
+            `  ${fmtDate(p.fecha)} — Orden #${p.id_orden} — ${p.metodo_pago}: ${fmtMonto(p.monto, p.moneda)}${eq}` +
+              (p.referencia ? ` — ref: ${p.referencia}` : "") +
+              (p.verificado ? "" : " — ⚠ SIN VERIFICAR")
+          );
+        }
+      }
+
+      if (ajustes.length) {
+        out.push("");
+        out.push("== Descuentos / notas de crédito ==");
+        for (const a of ajustes) {
+          const parts = [];
+          if (a.descuento > 0) parts.push(`descuento ${money(a.descuento)}`);
+          if (a.nota_credito > 0) parts.push(`nota de crédito ${money(a.nota_credito)}`);
+          out.push(`  ${fmtDate(a.fecha)} — Orden #${a.id_orden} — ${parts.join(", ")}${a.detalle ? ` (${a.detalle})` : ""}`);
+        }
+      }
+
+      return ok(out.join("\n"), structured);
     })
   );
 }
