@@ -194,25 +194,25 @@ Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y 
     "ninesys_get_order_by_id",
     {
       title: "Obtener una orden por su número (id)",
-      description: `Devuelve UNA orden concreta con detalle exhaustivo por su número/id:
+      description: `Devuelve UNA orden concreta con detalle exhaustivo por su número/id (sin importar su estado: activa, en espera, terminada, entregada, pausada o cancelada):
+- Observaciones y notas de la orden (limpias de etiquetas HTML).
 - Datos del cliente: nombre, teléfono, cédula, email y dirección.
 - Datos de la orden: estado ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada'), vendedor, fecha de emisión, fecha de entrega.
 - Pagos y financiero: total, abonos, descuentos, notas de crédito, saldo pendiente, sobrepago, estado de pago ('pagado_total', 'abono_parcial', 'pendiente_pago', 'sobrepago') y desglose de métodos de pago (moneda, monto, tasa, referencia).
-- Observaciones de la orden (limpias de etiquetas HTML).
 - Tipo de diseño asociado.
 - Productos completos: nombre, cantidad, precio unitario, subtotal, talla, tela, corte y atributos.
 
-Úsala cuando se pregunte por una orden específica por su número (ej: "estado de la orden 7226", "cuánto debe la orden 7060", "qué tela lleva la orden 123", "qué observaciones tiene la orden 7226", "cómo pagaron la orden 7226"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala SIEMPRE que se pregunte por una orden específica por su número/id (ej: "observaciones de la orden 6998", "qué observaciones tiene la orden 6998", "qué dice la orden 7226", "detalles de la orden 6998", "información de la orden 6998", "estado de la orden 7226", "cuánto debe la orden 7060", "qué tela lleva la orden 123", "cómo pagaron la orden 7226"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - id_orden (number): número/id de la orden.
   - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
       inputSchema: {
-        id_orden: z
+        id_orden: z.coerce
           .number()
           .int()
           .positive()
-          .describe("Número/id de la orden a consultar."),
+          .describe("Número/id de la orden a consultar (ej: 6998)."),
         response_format: responseFormat,
       },
       annotations: {

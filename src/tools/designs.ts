@@ -53,7 +53,7 @@ Args:
   - id_orden (number): número de la orden.
   - response_format ('markdown' | 'json').`,
       inputSchema: {
-        id_orden: z.number().int().positive().describe("Número de la orden."),
+        id_orden: z.coerce.number().int().positive().describe("Número de la orden."),
         response_format: responseFormat,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
