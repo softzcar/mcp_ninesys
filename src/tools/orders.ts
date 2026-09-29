@@ -84,6 +84,9 @@ function formatOrderDetail(o: Order, cliente?: OrderCustomerInfo, custName?: str
   if (o.observaciones) {
     lines.push(`  Observaciones: ${o.observaciones}`);
   }
+  if (o.imagenes_observaciones?.length) {
+    lines.push(`  Imágenes en observaciones: ${o.imagenes_observaciones.length} imagen(es) adjunta(s) (se muestran en el chat).`);
+  }
   if (o.metodos_pago?.length) {
     lines.push(`  Métodos de pago registrados:`);
     for (const mp of o.metodos_pago) {
@@ -237,12 +240,20 @@ Args:
         return ok(`No se encontró la orden #${id_orden} en la empresa ${id_empresa}.`, { found: false });
       }
 
+      const images: Array<{ url: string; caption: string }> = (
+        data.orden.imagenes_observaciones || []
+      ).map((img) => ({
+        url: img.url,
+        caption: img.caption || `Orden #${id_orden} — observación`,
+      }));
+
       const structured = {
         found: true,
         customer_id: data.customer_id,
         customer_name: data.customer_name,
         cliente: data.cliente,
         orden: data.orden,
+        images,
       };
       if (response_format === "json") {
         return ok(JSON.stringify(structured, null, 2), structured);

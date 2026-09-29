@@ -211,6 +211,7 @@ export interface Order {
   observaciones?: string;
   metodos_pago?: OrderPaymentMethod[];
   productos: OrderProduct[];
+  imagenes_observaciones?: Array<{ url: string; caption: string }>;
 }
 
 export interface OrdersByPhoneResponse {
