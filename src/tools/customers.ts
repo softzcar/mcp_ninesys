@@ -304,7 +304,13 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
       out.push(`  Total facturado: ${money(r.total_facturado)} | Abonado: ${money(r.total_abonado)}`);
       if (r.total_descuentos > 0) out.push(`  Descuentos: ${money(r.total_descuentos)}`);
       if (r.total_notas_credito > 0) out.push(`  Notas de crédito: ${money(r.total_notas_credito)}`);
-      out.push(`  SALDO TOTAL PENDIENTE: ${money(r.saldo_total_pendiente)}`);
+      if (data.id_orden) {
+        const saldoOrden = ordenes.reduce((s, o) => s + o.saldo_pendiente, 0);
+        out.push(`  SALDO DE LA ORDEN #${data.id_orden}: ${money(saldoOrden)}`);
+        out.push(`  (Deuda total del cliente en todas sus órdenes: ${money(r.saldo_total_pendiente)})`);
+      } else {
+        out.push(`  SALDO TOTAL PENDIENTE: ${money(r.saldo_total_pendiente)}`);
+      }
       if (r.entregadas_con_deuda > 0) out.push(`  ⚠ Órdenes entregadas con deuda: ${r.entregadas_con_deuda}`);
       if (r.pagos_sin_verificar > 0) out.push(`  ⚠ Pagos pendientes de verificar: ${r.pagos_sin_verificar}`);
       if (r.pagos_sin_abono > 0)
