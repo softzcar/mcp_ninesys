@@ -265,6 +265,14 @@ export interface OrderSearchProductItem {
   subtotal: number;
 }
 
+export interface OrderSearchSummary {
+  total_ordenes: number;
+  total_unidades: number;
+  unidades_por_talla: Record<string, number>;
+  unidades_por_tela: Record<string, number>;
+  unidades_por_producto: Record<string, number>;
+}
+
 export interface OrderSearchItem {
   id_orden: number;
   status: string;
@@ -284,6 +292,7 @@ export interface OrderSearchItem {
 
 export interface OrdersSearchByProductResponse {
   total: number;
+  resumen?: OrderSearchSummary;
   filters: {
     producto?: string | null;
     talla?: string | null;

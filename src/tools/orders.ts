@@ -351,14 +351,16 @@ Args:
     "ninesys_search_orders_by_product",
     {
       title: "Buscar órdenes por producto, talla o tela",
-      description: `Busca órdenes de trabajo según los productos que contienen, permitiendo filtrar por cualquier combinación de:
+      description: `Busca órdenes de trabajo según los productos que contienen y CALCULA EL TOTAL DE PRENDAS/UNIDADES y desgloses por talla y tela. Permite filtrar por cualquier combinación de:
 - producto: nombre del producto (ej: 'franela', 'franelas sublimadas', 'dtf', 'jersey', 'gorra'). Normaliza automáticamente singulares y plurales.
 - talla: talla del producto (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
 - tela: nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
 - corte: tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
 - status: estado de orden. Por defecto 'en_curso' (busca órdenes NO entregadas ni canceladas: 'activa', 'en espera', 'terminada'). También permite 'todas' o un status puntual.
 
-Úsala cuando el usuario pregunte por órdenes que contengan cierto producto ("órdenes con franelas", "pedidos de DTF"), con cierta talla ("franelas talla S", "pedidos en talla M"), con un tipo de tela específico ("órdenes con tela ESCOSIA", "pedidos en licra"), o combinaciones de estos ("franelas talla S con tela dry fit"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala cuando el usuario pregunte:
+1. Por órdenes que contengan un producto, talla o tela ("órdenes con franelas", "pedidos de DTF", "órdenes con tela ESCOSIA").
+2. Por la CANTIDAD TOTAL DE PRENDAS O UNIDADES ("¿cuántas franelas tienen esas órdenes?", "¿cuántas franelas talla S hay en producción?", "¿cuántas prendas de tela escosia hay?"). Esta herramienta ya incluye el conteo exacto consolidado en 'Total de prendas/unidades coincidentes' y su desglose por talla y tela, úsalos directamente para responder. NO crea ni modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - producto (string, opcional): texto o nombre del producto a buscar.
@@ -458,6 +460,7 @@ Args:
 
       const structured = {
         total: data.total,
+        resumen: data.resumen,
         filters: data.filters,
         ordenes: data.ordenes,
       };
@@ -476,11 +479,25 @@ Args:
         .filter(Boolean)
         .join(" | ");
 
+      const totalUnidades = data.resumen?.total_unidades !== undefined ? data.resumen.total_unidades : "N/A";
       const lines = [
-        `Órdenes encontradas por producto (empresa ${id_empresa}, total: ${data.total}):`,
+        `Órdenes encontradas: ${data.total} | Total de prendas/unidades coincidentes: ${totalUnidades}`,
         `Filtros: ${filtrosTxt}`,
-        "",
       ];
+
+      if (data.resumen?.unidades_por_talla && Object.keys(data.resumen.unidades_por_talla).length > 0) {
+        const desgloseTallas = Object.entries(data.resumen.unidades_por_talla)
+          .map(([t, cant]) => `${t}: ${cant}`)
+          .join(", ");
+        lines.push(`Desglose por talla: ${desgloseTallas}`);
+      }
+      if (data.resumen?.unidades_por_tela && Object.keys(data.resumen.unidades_por_tela).length > 0) {
+        const desgloseTelas = Object.entries(data.resumen.unidades_por_tela)
+          .map(([tl, cant]) => `${tl}: ${cant}`)
+          .join(", ");
+        lines.push(`Desglose por tela: ${desgloseTelas}`);
+      }
+      lines.push("");
 
       for (const o of data.ordenes) {
         lines.push(
