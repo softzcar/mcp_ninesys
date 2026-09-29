@@ -6,7 +6,13 @@ import { CACHE_TTL } from "../constants.js";
 import { phone, responseFormat } from "../schemas/inputs.js";
 import { ok, guard } from "./helpers.js";
 import type { RequestContext } from "./index.js";
-import type { OrdersByPhoneResponse, OrderByIdResponse, Order } from "../types/api.js";
+import type {
+  OrdersByPhoneResponse,
+  OrderByIdResponse,
+  OrdersByStatusResponse,
+  Order,
+  OrderCustomerInfo,
+} from "../types/api.js";
 
 const money = (n: number) => `$${Number(n).toFixed(2)}`;
 const fmtDate = (s: string | null) => {
@@ -17,14 +23,20 @@ const fmtDate = (s: string | null) => {
     : d.toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric" });
 };
 const STATUS: Record<string, string> = {
+  activa: "Activa (en producción)",
+  "en espera": "En espera",
+  en_espera: "En espera",
+  terminada: "Terminada / Lista",
+  entregada: "Entregada",
+  pausada: "Pausada",
+  cancelada: "Cancelada",
   pendiente: "Pendiente",
   en_produccion: "En producción",
   listo: "Listo para entrega",
   entregado: "Entregado",
-  cancelada: "Cancelada",
 };
 
-function formatOrder(o: Order): string {
+function formatOrderSimple(o: Order): string {
   const lines = [
     `Orden #${o.id_orden}`,
     `  Estado: ${STATUS[o.status] || o.status || "-"}`,
@@ -41,8 +53,63 @@ function formatOrder(o: Order): string {
   return lines.join("\n");
 }
 
+function formatOrderDetail(o: Order, cliente?: OrderCustomerInfo, custName?: string): string {
+  const lines = [
+    `Orden #${o.id_orden} — ${o.cliente_nombre || custName || cliente?.nombre || "Cliente"}`,
+    `  Estado: ${STATUS[o.status] || o.status || "-"}`,
+    `  Vendedor: ${o.vendedor || "Sin asignar"}`,
+    `  Fecha emisión: ${fmtDate(o.fecha_inicio ?? null)}`,
+    `  Fecha entrega: ${fmtDate(o.fecha_entrega)}`,
+    `  Estado de pago: ${o.estado_pago || "-"}`,
+    `  Total: ${money(o.pago_total)} | Abonos: ${money(o.total_abonos)}` +
+      (o.total_descuentos > 0 ? ` | Descuentos: ${money(o.total_descuentos)}` : "") +
+      (o.total_notas_credito && o.total_notas_credito > 0 ? ` | Notas de crédito: ${money(o.total_notas_credito)}` : ""),
+  ];
+  if (o.saldo_pendiente > 0) {
+    lines.push(`  Saldo pendiente: ${money(o.saldo_pendiente)}`);
+  }
+  if (o.sobrepago && o.sobrepago > 0) {
+    lines.push(`  Sobrepago (a favor del cliente): ${money(o.sobrepago)}`);
+  }
+  if (o.descuento_detalle) {
+    lines.push(`  Detalle descuentos: ${o.descuento_detalle}`);
+  }
+  if (cliente && (cliente.telefono || cliente.cedula || cliente.email)) {
+    lines.push(`  Cliente: Tel: ${cliente.telefono || "-"} | Cédula: ${cliente.cedula || "-"} | Email: ${cliente.email || "-"}`);
+  }
+  if (o.diseno_tipo && o.diseno_tipo !== "Ninguno") {
+    lines.push(`  Diseño: ${o.diseno_tipo}`);
+  }
+  if (o.observaciones) {
+    lines.push(`  Observaciones: ${o.observaciones}`);
+  }
+  if (o.metodos_pago?.length) {
+    lines.push(`  Métodos de pago registrados:`);
+    for (const mp of o.metodos_pago) {
+      const detalle = mp.detalle ? ` (ref/det: ${mp.detalle})` : "";
+      const tasa = mp.tasa ? ` @ tasa ${mp.tasa}` : "";
+      lines.push(`    - ${mp.moneda} ${mp.metodo_pago}: ${mp.monto}${tasa}${detalle}`);
+    }
+  }
+  if (o.productos?.length) {
+    lines.push(`  Productos (${o.productos.length}):`);
+    for (const p of o.productos) {
+      const specs: string[] = [];
+      if (p.talla) specs.push(`Talla: ${p.talla}`);
+      if (p.tela) specs.push(`Tela: ${p.tela}`);
+      if (p.corte && p.corte !== "No aplica") specs.push(`Corte: ${p.corte}`);
+      if (p.atributo) specs.push(`Atributo: ${p.atributo}`);
+      const specsStr = specs.length ? ` [${specs.join(", ")}]` : "";
+      const priceStr = p.precio !== undefined ? ` @ ${money(p.precio)} = ${money(p.subtotal ?? p.cantidad * p.precio)}` : "";
+      lines.push(`    - ${p.name} x ${p.cantidad}${specsStr}${priceStr}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 export function registerOrderTools(server: McpServer, ctx: RequestContext): void {
   const { idEmpresa: id_empresa } = ctx;
+
   server.registerTool(
     "ninesys_get_orders_by_phone",
     {
@@ -110,13 +177,13 @@ Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y 
       const parts: string[] = [`Órdenes de ${data.customer_name || "cliente"} (empresa ${id_empresa}):`, ""];
       parts.push("== Con saldo pendiente ==");
       if (conDeuda.length) {
-        parts.push(...conDeuda.map(formatOrder));
+        parts.push(...conDeuda.map(formatOrderSimple));
         if (conDeuda.length > 1) parts.push(`\nTotal adeudado: ${money(totalDeuda)}`);
       } else {
         parts.push("(Sin órdenes con saldo pendiente.)");
       }
       if (sinDeuda.length) {
-        parts.push("", "== Ya pagadas / sin deuda ==", ...sinDeuda.map(formatOrder));
+        parts.push("", "== Ya pagadas / sin deuda ==", ...sinDeuda.map(formatOrderSimple));
       }
       return ok(parts.join("\n"), structured);
     })
@@ -126,15 +193,19 @@ Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y 
     "ninesys_get_order_by_id",
     {
       title: "Obtener una orden por su número (id)",
-      description: `Devuelve UNA orden concreta por su número/id, con su estado, fecha de entrega, total, abonos, descuentos, saldo pendiente, productos y el nombre del cliente dueño.
+      description: `Devuelve UNA orden concreta con detalle exhaustivo por su número/id:
+- Datos del cliente: nombre, teléfono, cédula, email y dirección.
+- Datos de la orden: estado ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada'), vendedor, fecha de emisión, fecha de entrega.
+- Pagos y financiero: total, abonos, descuentos, notas de crédito, saldo pendiente, sobrepago, estado de pago ('pagado_total', 'abono_parcial', 'pendiente_pago', 'sobrepago') y desglose de métodos de pago (moneda, monto, tasa, referencia).
+- Observaciones de la orden (limpias de etiquetas HTML).
+- Tipo de diseño asociado.
+- Productos completos: nombre, cantidad, precio unitario, subtotal, talla, tela, corte y atributos.
 
-Úsala cuando se pregunta por una orden específica por su número (ej: "estado de la orden 1234", "cuánto falta por pagar de la orden #58", "qué tiene la orden 320"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala cuando se pregunte por una orden específica por su número (ej: "estado de la orden 7226", "cuánto debe la orden 7060", "qué tela lleva la orden 123", "qué observaciones tiene la orden 7226", "cómo pagaron la orden 7226"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - id_orden (number): número/id de la orden.
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
-
-Devuelve: { found, customer_name, orden: { id_orden, status, fecha_entrega, pago_total, total_abonos, total_descuentos, saldo_pendiente, productos } }. Si la orden no existe en esta empresa, found=false.`,
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
       inputSchema: {
         id_orden: z
           .number()
@@ -167,14 +238,111 @@ Devuelve: { found, customer_name, orden: { id_orden, status, fecha_entrega, pago
 
       const structured = {
         found: true,
+        customer_id: data.customer_id,
         customer_name: data.customer_name,
-        orden: data.orden as unknown as Record<string, unknown>,
+        cliente: data.cliente,
+        orden: data.orden,
       };
       if (response_format === "json") {
         return ok(JSON.stringify(structured, null, 2), structured);
       }
-      const header = `Orden #${data.orden.id_orden}${data.customer_name ? ` — ${data.customer_name}` : ""} (empresa ${id_empresa}):`;
-      return ok([header, "", formatOrder(data.orden)].join("\n"), structured);
+      return ok(formatOrderDetail(data.orden, data.cliente, data.customer_name), structured);
+    })
+  );
+
+  server.registerTool(
+    "ninesys_list_orders_by_status",
+    {
+      title: "Listar órdenes por estado",
+      description: `Consulta y lista órdenes según su estado actual en producción o entrega:
+- 'activa': órdenes actualmente en producción/taller.
+- 'en espera': órdenes en cola o esperando inicio/materiales.
+- 'terminada': órdenes terminadas/listas para ser entregadas o retiradas.
+- 'entregada': órdenes que ya fueron entregadas al cliente.
+- 'pausada': órdenes en pausa.
+- 'cancelada': órdenes anuladas o canceladas.
+- 'todas': órdenes más recientes sin importar el estado.
+
+Devuelve para cada orden: número de orden, nombre del cliente, vendedor, fechas de inicio y entrega, total facturado, abonos, saldo pendiente, sobrepago, estado de pago y resumen de productos.
+
+Úsala cuando pregunten qué órdenes están en producción, cuáles están listas o terminadas, qué pedidos están pendientes de entrega, o qué órdenes recientes hay con un estado específico. NO modifica nada. La empresa ya está fijada por la sesión.
+
+Args:
+  - status (string, opcional): estado a filtrar ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada', o 'todas'). Default: 'todas'.
+  - limit (number, opcional): cantidad máxima de órdenes a retornar (1 a 50, default: 20).
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+      inputSchema: {
+        status: z
+          .string()
+          .optional()
+          .describe("Estado a filtrar ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada', o 'todas'). Default: 'todas'."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Cantidad máxima de órdenes a retornar (default: 20, max: 50)."),
+        response_format: responseFormat,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guard("ninesys_list_orders_by_status", async (args) => {
+      const { status = "todas", limit = 20, response_format } = args as {
+        status?: string;
+        limit?: number;
+        response_format: "markdown" | "json";
+      };
+      const data = await cached(
+        `orders_status:${id_empresa}:${status}:${limit}`,
+        CACHE_TTL.orders,
+        () =>
+          apiGet<OrdersByStatusResponse>(`/internal/ordenes/${id_empresa}/by-status`, id_empresa, {
+            status,
+            limit,
+          })
+      );
+
+      if (!data || !data.ordenes?.length) {
+        return ok(`No se encontraron órdenes con estado '${status}' en la empresa ${id_empresa}.`, {
+          total: 0,
+          status_filter: status,
+          ordenes: [],
+        });
+      }
+
+      const structured = {
+        total: data.total,
+        status_filter: data.status_filter,
+        ordenes: data.ordenes,
+      };
+
+      if (response_format === "json") {
+        return ok(JSON.stringify(structured, null, 2), structured);
+      }
+
+      const lines = [
+        `Órdenes con estado '${data.status_filter}' (empresa ${id_empresa}, total devueltas: ${data.total}):`,
+        "",
+      ];
+      for (const o of data.ordenes) {
+        const prodSummary = o.productos_resumen?.length
+          ? o.productos_resumen.map((p) => `${p.name} x ${p.cantidad}${p.talla ? ` (${p.talla})` : ""}`).join(", ")
+          : "Sin productos registrados";
+        lines.push(
+          `• Orden #${o.id_orden} — ${o.cliente_nombre || "Cliente"} (${STATUS[o.status] || o.status})`,
+          `  Vendedor: ${o.vendedor || "-"} | Entrega: ${fmtDate(o.fecha_entrega)}`,
+          `  Total: ${money(o.pago_total)} | Abonos: ${money(o.total_abonos)} | Saldo: ${money(o.saldo_pendiente)} [${o.estado_pago}]`,
+          `  Productos: ${prodSummary}`,
+          ""
+        );
+      }
+      return ok(lines.join("\n"), structured);
     })
   );
 }

@@ -161,19 +161,55 @@ export interface CustomerByPhoneResponse {
 }
 
 export interface OrderProduct {
+  id?: number;
+  cod?: number | null;
+  sku?: string;
   name: string;
   cantidad: number;
-  detalle_tallas: string;
+  precio?: number;
+  subtotal?: number;
+  talla?: string;
+  detalle_tallas?: string;
+  tela?: string;
+  corte?: string;
+  atributo?: string;
+}
+
+export interface OrderPaymentMethod {
+  moneda: string;
+  metodo_pago: string;
+  monto: number;
+  tasa: number;
+  detalle: string;
+}
+
+export interface OrderCustomerInfo {
+  id: number;
+  nombre: string;
+  telefono: string;
+  cedula: string;
+  email: string;
+  direccion: string;
 }
 
 export interface Order {
   id_orden: number;
   status: string;
+  cliente_nombre?: string;
+  vendedor?: string;
+  fecha_inicio?: string | null;
   fecha_entrega: string | null;
   pago_total: number;
   total_abonos: number;
   total_descuentos: number;
+  total_notas_credito?: number;
   saldo_pendiente: number;
+  sobrepago?: number;
+  estado_pago?: string;
+  descuento_detalle?: string;
+  diseno_tipo?: string;
+  observaciones?: string;
+  metodos_pago?: OrderPaymentMethod[];
   productos: OrderProduct[];
 }
 
@@ -188,7 +224,34 @@ export interface OrderByIdResponse {
   found: boolean;
   customer_id?: number;
   customer_name?: string;
+  cliente?: OrderCustomerInfo;
   orden?: Order;
+}
+
+export interface OrderSummaryByStatus {
+  id_orden: number;
+  status: string;
+  cliente_nombre: string;
+  vendedor: string;
+  fecha_inicio: string | null;
+  fecha_entrega: string | null;
+  pago_total: number;
+  total_abonos: number;
+  total_descuentos: number;
+  saldo_pendiente: number;
+  sobrepago: number;
+  estado_pago: string;
+  productos_resumen: Array<{
+    name: string;
+    cantidad: number;
+    talla?: string;
+  }>;
+}
+
+export interface OrdersByStatusResponse {
+  total: number;
+  status_filter: string;
+  ordenes: OrderSummaryByStatus[];
 }
 
 export interface BusinessHours {
