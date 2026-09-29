@@ -39,6 +39,9 @@ export interface CustomerSearchRow {
   phone: string;
   cedula: string;
   email: string;
+  ordenes_en_curso: number;
+  ultima_orden: number | null;
+  fecha_ultima_orden: string | null;
 }
 export interface CustomerSearchResponse {
   count: number;

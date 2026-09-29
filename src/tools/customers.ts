@@ -91,15 +91,17 @@ Devuelve: { found, customer: { _id, first_name, last_name, cedula, phone, email,
     "ninesys_search_customers",
     {
       title: "Buscar clientes por nombre",
-      description: `Busca clientes de la empresa por su NOMBRE COMPLETO (o parte), en cualquier orden. Funciona con "nombre apellido" juntos (ej. "maria arrieta"), nombres compuestos e ignora tildes. También busca por teléfono o cédula.
+      description: `Busca clientes de la empresa por su NOMBRE COMPLETO (o parte), en cualquier orden. Funciona con "nombre apellido" juntos (ej. "maria arrieta"), nombres compuestos e ignora tildes. También busca por teléfono, cédula o email.
 
-Úsala cuando se pregunta por un cliente por su nombre (no por teléfono). Devuelve una lista de coincidencias con sus datos, incluido el teléfono — que luego puedes usar con ninesys_get_orders_by_phone para ver sus órdenes. NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+Úsala cuando se pregunta por un cliente por su nombre. Cada resultado trae el ID del cliente (_id), cuántas órdenes en curso tiene y su última orden. Con el ID puedes llamar a ninesys_get_account_statement (customer_id). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+
+REGLA CUANDO HAY VARIAS COINCIDENCIAS: el usuario normalmente SOLO conoce el nombre del cliente. NUNCA le pidas teléfono, cédula ni email. Muéstrale la lista con el ID, el nombre completo, las órdenes en curso y la última orden de cada uno, y pídele que responda con el ID del cliente que le interesa. Cuando responda con un ID, úsalo directamente como customer_id.
 
 Args:
-  - query (string): nombre (o parte), teléfono o cédula a buscar.
+  - query (string): nombre (o parte), teléfono, cédula o email a buscar.
   - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
-Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, email }] }. Si hay varias coincidencias, pide al usuario que precise.`,
+Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, email, ordenes_en_curso, ultima_orden, fecha_ultima_orden }] }.`,
       inputSchema: {
         query: z
           .string()
@@ -141,10 +143,24 @@ Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, emai
         `Clientes que coinciden con "${query}" (${customers.length}):`,
         "",
         ...customers.map((c) => {
-          const nombre = `${c.first_name} ${c.last_name}`.trim();
-          return `- ${nombre} — tel: ${c.phone || "-"}${c.cedula ? ` — CI: ${c.cedula}` : ""}`;
+          const nombre = `${c.first_name} ${c.last_name}`.replace(/\s+/g, " ").trim();
+          const enCurso =
+            c.ordenes_en_curso > 0
+              ? `${c.ordenes_en_curso} orden${c.ordenes_en_curso === 1 ? "" : "es"} en curso`
+              : "sin órdenes en curso";
+          const ultima = c.ultima_orden
+            ? `última orden #${c.ultima_orden}${c.fecha_ultima_orden ? ` (${fmtDate(c.fecha_ultima_orden)})` : ""}`
+            : "sin órdenes";
+          return `- ID ${c._id} — ${nombre} — ${enCurso} — ${ultima}`;
         }),
       ];
+      if (customers.length > 1) {
+        lines.push(
+          "",
+          "HAY VARIAS COINCIDENCIAS: muestra esta lista al usuario (ID, nombre, órdenes en curso y última orden) " +
+            "y pídele que responda con el ID del cliente que le interesa. NO le pidas teléfono, cédula ni email."
+        );
+      }
       return ok(lines.join("\n"), structured);
     })
   );
@@ -159,7 +175,7 @@ Devuelve: { count, customers: [{ _id, first_name, last_name, phone, cedula, emai
 
 Órdenes incluidas: todas las que NO están entregadas ni canceladas (en cualquier estado), más las entregadas que aún tienen deuda. Las entregadas ya pagadas solo si se pide su historial (incluir_entregadas_pagadas=true). Las canceladas nunca.
 
-Si solo tienes el NOMBRE del cliente, usa antes ninesys_search_customers para obtener su _id y pásalo como customer_id. Si tienes el teléfono, puedes pasar phone.
+Si solo tienes el NOMBRE del cliente, usa antes ninesys_search_customers para obtener su _id y pásalo como customer_id. Si la búsqueda devuelve varios clientes, NO pidas teléfono ni cédula: muestra la lista con ID y nombre y pide al usuario el ID. Si el usuario responde con un número de ID de cliente, pásalo como customer_id.
 
 Args:
   - customer_id (number, opcional): _id del cliente (de ninesys_search_customers). Preferido.
