@@ -257,7 +257,7 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
       if (r.pagos_sin_verificar > 0) out.push(`  ⚠ Pagos pendientes de verificar: ${r.pagos_sin_verificar}`);
       if (r.pagos_sin_abono > 0)
         out.push(
-          `  ⚠ Registros de pago sin abono asociado (posible duplicado, NO suman al saldo): ${r.pagos_sin_abono}`
+          `  ⚠ Registros de pago repetidos que exceden lo abonado (posible duplicado, NO suman al saldo): ${r.pagos_sin_abono}`
         );
 
       out.push("");
@@ -289,7 +289,7 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
             `  ${fmtDate(p.fecha)} — Orden #${p.id_orden} — ${p.metodo_pago}: ${fmtMonto(p.monto, p.moneda)}${eq}` +
               (p.referencia ? ` — ref: ${p.referencia}` : "") +
               (p.sin_abono
-                ? " — ⚠ POSIBLE DUPLICADO (sin abono asociado, no suma al saldo)"
+                ? " — ⚠ POSIBLE DUPLICADO (repite un pago anterior y excede lo abonado; no suma al saldo)"
                 : p.verificado
                   ? ""
                   : " — ⚠ SIN VERIFICAR")
