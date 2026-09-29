@@ -105,8 +105,12 @@ const apiHttp: AxiosInstance = axios.create({
 const cdnHttp: AxiosInstance = axios.create({
   baseURL: CDN_URL,
   timeout: 8000,
-  headers: { Accept: "application/json" },
+  headers: {
+    Accept: "application/json",
+    "X-Internal-Token": INTERNAL_TOKEN,
+  },
 });
+
 
 async function withResilience<T>(fn: () => Promise<T>, ctx: string): Promise<T> {
   if (!breakerCanPass()) {
