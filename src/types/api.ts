@@ -68,6 +68,7 @@ export interface StatementPayment {
   referencia: string | null;
   tipo_de_pago: string | null;
   verificado: boolean;
+  sin_abono: boolean;
 }
 export interface StatementAdjustment {
   fecha: string;
@@ -88,6 +89,7 @@ export interface AccountStatementResponse {
     saldo_total_pendiente: number;
     entregadas_con_deuda: number;
     pagos_sin_verificar: number;
+    pagos_sin_abono: number;
   };
   ordenes?: StatementOrder[];
   pagos?: StatementPayment[];

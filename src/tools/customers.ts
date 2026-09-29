@@ -167,7 +167,7 @@ Args:
   - incluir_entregadas_pagadas (boolean, default false): incluir órdenes entregadas ya saldadas.
   - response_format ('markdown' | 'json').
 
-Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los recalcules.`,
+Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los recalcules ni sumes la lista de pagos. Los pagos marcados como "posible duplicado" no cuentan en el saldo: menciónalos como registros a revisar, no como pagos.`,
       inputSchema: {
         customer_id: z.number().int().positive().optional().describe("_id del cliente (preferido)."),
         phone: z
@@ -239,6 +239,10 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
       out.push(`  SALDO TOTAL PENDIENTE: ${money(r.saldo_total_pendiente)}`);
       if (r.entregadas_con_deuda > 0) out.push(`  ⚠ Órdenes entregadas con deuda: ${r.entregadas_con_deuda}`);
       if (r.pagos_sin_verificar > 0) out.push(`  ⚠ Pagos pendientes de verificar: ${r.pagos_sin_verificar}`);
+      if (r.pagos_sin_abono > 0)
+        out.push(
+          `  ⚠ Registros de pago sin abono asociado (posible duplicado, NO suman al saldo): ${r.pagos_sin_abono}`
+        );
 
       out.push("");
       out.push("== Órdenes ==");
@@ -268,7 +272,11 @@ Los montos y el saldo vienen calculados por el sistema: úsalos tal cual, no los
           out.push(
             `  ${fmtDate(p.fecha)} — Orden #${p.id_orden} — ${p.metodo_pago}: ${fmtMonto(p.monto, p.moneda)}${eq}` +
               (p.referencia ? ` — ref: ${p.referencia}` : "") +
-              (p.verificado ? "" : " — ⚠ SIN VERIFICAR")
+              (p.sin_abono
+                ? " — ⚠ POSIBLE DUPLICADO (sin abono asociado, no suma al saldo)"
+                : p.verificado
+                  ? ""
+                  : " — ⚠ SIN VERIFICAR")
           );
         }
       }
