@@ -254,6 +254,46 @@ export interface OrdersByStatusResponse {
   ordenes: OrderSummaryByStatus[];
 }
 
+export interface OrderSearchProductItem {
+  id: number;
+  name: string;
+  cantidad: number;
+  talla: string;
+  tela: string;
+  corte: string;
+  precio: number;
+  subtotal: number;
+}
+
+export interface OrderSearchItem {
+  id_orden: number;
+  status: string;
+  cliente_nombre: string;
+  vendedor: string;
+  fecha_inicio: string | null;
+  fecha_entrega: string | null;
+  pago_total: number;
+  total_abonos: number;
+  total_descuentos: number;
+  saldo_pendiente: number;
+  sobrepago: number;
+  estado_pago: string;
+  productos_coincidentes: OrderSearchProductItem[];
+  total_productos_orden: number;
+}
+
+export interface OrdersSearchByProductResponse {
+  total: number;
+  filters: {
+    producto?: string | null;
+    talla?: string | null;
+    tela?: string | null;
+    corte?: string | null;
+    status?: string | null;
+  };
+  ordenes: OrderSearchItem[];
+}
+
 export interface BusinessHours {
   horaInicioManana: number | string;
   horaFinManana: number | string;

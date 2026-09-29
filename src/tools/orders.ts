@@ -10,6 +10,7 @@ import type {
   OrdersByPhoneResponse,
   OrderByIdResponse,
   OrdersByStatusResponse,
+  OrdersSearchByProductResponse,
   Order,
   OrderCustomerInfo,
 } from "../types/api.js";
@@ -342,6 +343,165 @@ Args:
           ""
         );
       }
+      return ok(lines.join("\n"), structured);
+    })
+  );
+
+  server.registerTool(
+    "ninesys_search_orders_by_product",
+    {
+      title: "Buscar órdenes por producto, talla o tela",
+      description: `Busca órdenes de trabajo según los productos que contienen, permitiendo filtrar por cualquier combinación de:
+- producto: nombre del producto (ej: 'franela', 'franelas sublimadas', 'dtf', 'jersey', 'gorra'). Normaliza automáticamente singulares y plurales.
+- talla: talla del producto (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
+- tela: nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
+- corte: tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
+- status: estado de orden. Por defecto 'en_curso' (busca órdenes NO entregadas ni canceladas: 'activa', 'en espera', 'terminada'). También permite 'todas' o un status puntual.
+
+Úsala cuando el usuario pregunte por órdenes que contengan cierto producto ("órdenes con franelas", "pedidos de DTF"), con cierta talla ("franelas talla S", "pedidos en talla M"), con un tipo de tela específico ("órdenes con tela ESCOSIA", "pedidos en licra"), o combinaciones de estos ("franelas talla S con tela dry fit"). NO crea ni modifica nada. La empresa ya está fijada por la sesión.
+
+Args:
+  - producto (string, opcional): texto o nombre del producto a buscar.
+  - talla (string, opcional): talla a filtrar (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
+  - tela (string, opcional): nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
+  - corte (string, opcional): tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
+  - status (string, opcional): por defecto 'en_curso'. Opciones: 'en_curso', 'activa', 'en espera', 'terminada', 'entregada', 'todas'.
+  - limit (number, opcional): cantidad máxima de órdenes a retornar (default: 20, max: 50).
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+      inputSchema: {
+        producto: z
+          .string()
+          .optional()
+          .describe("Texto o nombre del producto a buscar (ej: 'franela', 'dtf', 'gorra')."),
+        talla: z
+          .string()
+          .optional()
+          .describe("Talla a filtrar (ej: 'S', 'M', 'L', 'XL', '14', 'Unica')."),
+        tela: z
+          .string()
+          .optional()
+          .describe("Nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON')."),
+        corte: z
+          .string()
+          .optional()
+          .describe("Tipo de corte (ej: 'Damas', 'Caballeros', 'Niños')."),
+        status: z
+          .string()
+          .optional()
+          .describe("Estado de orden. Por defecto 'en_curso' (no entregadas ni canceladas). Opciones: 'en_curso', 'activa', 'en espera', 'terminada', 'entregada', 'todas'."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Cantidad máxima de órdenes a retornar (default: 20, max: 50)."),
+        response_format: responseFormat,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guard("ninesys_search_orders_by_product", async (args) => {
+      const {
+        producto,
+        talla,
+        tela,
+        corte,
+        status = "en_curso",
+        limit = 20,
+        response_format,
+      } = args as {
+        producto?: string;
+        talla?: string;
+        tela?: string;
+        corte?: string;
+        status?: string;
+        limit?: number;
+        response_format: "markdown" | "json";
+      };
+
+      const cacheKey = `orders_prod:${id_empresa}:${producto || ""}:${talla || ""}:${tela || ""}:${corte || ""}:${status}:${limit}`;
+      const data = await cached(
+        cacheKey,
+        CACHE_TTL.orders,
+        () =>
+          apiGet<OrdersSearchByProductResponse>(`/internal/ordenes/${id_empresa}/search-by-product`, id_empresa, {
+            producto: producto || "",
+            talla: talla || "",
+            tela: tela || "",
+            corte: corte || "",
+            status,
+            limit,
+          })
+      );
+
+      if (!data || !data.ordenes?.length) {
+        const filtrosTxt = [
+          producto ? `producto "${producto}"` : null,
+          talla ? `talla "${talla}"` : null,
+          tela ? `tela "${tela}"` : null,
+          corte ? `corte "${corte}"` : null,
+          status !== "todas" ? `estado "${status}"` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return ok(`No se encontraron órdenes con ${filtrosTxt || "los criterios indicados"} en la empresa ${id_empresa}.`, {
+          total: 0,
+          filters: data?.filters || {},
+          ordenes: [],
+        });
+      }
+
+      const structured = {
+        total: data.total,
+        filters: data.filters,
+        ordenes: data.ordenes,
+      };
+
+      if (response_format === "json") {
+        return ok(JSON.stringify(structured, null, 2), structured);
+      }
+
+      const filtrosTxt = [
+        data.filters.producto ? `Producto: "${data.filters.producto}"` : null,
+        data.filters.talla ? `Talla: "${data.filters.talla}"` : null,
+        data.filters.tela ? `Tela: "${data.filters.tela}"` : null,
+        data.filters.corte ? `Corte: "${data.filters.corte}"` : null,
+        data.filters.status ? `Estado: ${data.filters.status}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      const lines = [
+        `Órdenes encontradas por producto (empresa ${id_empresa}, total: ${data.total}):`,
+        `Filtros: ${filtrosTxt}`,
+        "",
+      ];
+
+      for (const o of data.ordenes) {
+        lines.push(
+          `• Orden #${o.id_orden} — ${o.cliente_nombre || "Cliente"} (${STATUS[o.status] || o.status})`,
+          `  Vendedor: ${o.vendedor || "-"} | Entrega: ${fmtDate(o.fecha_entrega)}`,
+          `  Total: ${money(o.pago_total)} | Saldo: ${money(o.saldo_pendiente)} [${o.estado_pago}]`,
+          `  Productos coincidentes:`
+        );
+        for (const p of o.productos_coincidentes) {
+          const specs = [
+            p.talla ? `Talla: ${p.talla}` : null,
+            p.tela ? `Tela: ${p.tela}` : null,
+            p.corte && p.corte !== "No aplica" ? `Corte: ${p.corte}` : null,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          lines.push(`    - ${p.name} x ${p.cantidad}${specs ? ` [${specs}]` : ""} @ ${money(p.precio)}`);
+        }
+        lines.push("");
+      }
+
       return ok(lines.join("\n"), structured);
     })
   );
