@@ -271,16 +271,25 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
     "ninesys_ordenes_en_curso",
     {
       title: "Órdenes en curso (Control de producción)",
-      description: `Órdenes que están realmente en proceso de fabricación, con EXACTAMENTE el mismo criterio que la pantalla "Control de producción" del sistema: estado activa, pausada o En espera, con lote de producción y con al menos un producto físico. Devuelve el TOTAL REAL (sin límite), un resumen (por estado, por paso/departamento actual, urgentes, atrasadas y por asignar) y la lista completa con cliente, paso actual, % de avance, unidades y fecha de entrega.
+      description: `Órdenes que están realmente en proceso de fabricación, con EXACTAMENTE el mismo criterio que la pantalla "Control de producción" del sistema: estado activa, pausada o En espera, con lote de producción y con al menos un producto físico. Devuelve SIEMPRE el TOTAL REAL y el resumen de TODAS las órdenes en curso (por estado, por paso/departamento actual, urgentes, atrasadas y por asignar, con los números de las urgentes y de las por asignar), y el detalle de las órdenes (todas o solo las del filtro).
 
-Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes o sin asignar. El número a responder es 'total'. NO modifica nada. La empresa ya está fijada por la sesión.
+Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes, pausadas o sin asignar. Para listar un subconjunto USA LOS FILTROS (así el detalle llega completo). Responde solo con órdenes que aparezcan en la salida: nunca completes con números inventados. NO modifica nada. La empresa ya está fijada por la sesión.
 
-Args:
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+"Entrega" es la fecha de entrega COMPROMETIDA en la orden; "atrasada" = esa fecha ya pasó. La pantalla del taller muestra además una fecha PROYECTADA (estimación) que no es esta.
+
+Args (todos opcionales, se combinan):
+  - solo ('urgentes' | 'atrasadas' | 'por_asignar'): limita el detalle a ese grupo.
+  - paso (string): limita el detalle a un paso/departamento actual (ej. 'Limpieza', 'Estampado', 'Impresión', 'Por asignar', 'Terminado').
+  - estado (string): limita el detalle a un estado ('activa', 'En espera', 'pausada').
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
-        response_format: responseFormat,
+        solo: z
+          .enum(["urgentes", "atrasadas", "por_asignar"])
+          .optional()
+          .describe("Limita el detalle a: 'urgentes', 'atrasadas' o 'por_asignar'."),
+        paso: z.string().optional().describe("Paso/departamento actual (ej. 'Limpieza', 'Estampado')."),
+        estado: z.string().optional().describe("Estado: 'activa', 'En espera' o 'pausada'."),
       },
       annotations: {
         readOnlyHint: true,
@@ -290,7 +299,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       },
     },
     guard("ninesys_ordenes_en_curso", async (args) => {
-      const { response_format } = args as { response_format: "markdown" | "json" };
+      const { solo, paso, estado } = args as { solo?: "urgentes" | "atrasadas" | "por_asignar"; paso?: string; estado?: string };
       const data = await cached(
         `orders_en_curso:${id_empresa}`,
         CACHE_TTL.orders,
@@ -305,31 +314,39 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         });
       }
 
-      const structured = { total: data.total, resumen: data.resumen, ordenes: data.ordenes };
-      if (response_format === "json") {
-        return ok(JSON.stringify(structured, null, 2), structured);
-      }
+      const norm = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      let detalle = data.ordenes;
+      if (solo === "urgentes") detalle = detalle.filter((o) => o.urgente);
+      if (solo === "atrasadas") detalle = detalle.filter((o) => o.atrasada);
+      if (solo === "por_asignar") detalle = detalle.filter((o) => o.paso === "Por asignar");
+      if (paso) detalle = detalle.filter((o) => norm(o.paso) === norm(paso));
+      if (estado) detalle = detalle.filter((o) => norm(o.status) === norm(estado));
+      const filtros = [solo && `solo ${solo}`, paso && `paso ${paso}`, estado && `estado ${estado}`].filter(Boolean).join(", ");
 
       const r = data.resumen;
       const conteo = (obj: Record<string, number>) =>
         Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(" | ");
+      const ids = (lista: typeof data.ordenes) => lista.map((o) => `#${o.id_orden}`).join(", ") || "ninguna";
       const lines = [
         `Órdenes en curso (Control de producción, empresa ${id_empresa}): TOTAL ${data.total}`,
         `Por estado: ${conteo(r.por_estado)}`,
         `Por paso actual: ${conteo(r.por_paso)}`,
-        `Urgentes: ${r.urgentes} | Atrasadas (entrega vencida): ${r.atrasadas} | Por asignar: ${r.por_asignar}`,
+        `Urgentes (${r.urgentes}): ${ids(data.ordenes.filter((o) => o.urgente))}`,
+        `Por asignar (${r.por_asignar}): ${ids(data.ordenes.filter((o) => o.paso === "Por asignar"))}`,
+        `Atrasadas (entrega comprometida vencida): ${r.atrasadas}`,
         "",
-        "Detalle (orden de la fila de producción):",
+        filtros
+          ? `Detalle filtrado (${filtros}): ${detalle.length} orden(es)`
+          : `Detalle de las ${detalle.length} órdenes (orden de la fila de producción):`,
       ];
-      for (const o of data.ordenes) {
+      for (const o of detalle) {
+        const marcas = [o.urgente && "URGENTE", o.atrasada && "atrasada", o.status !== "activa" && o.status].filter(Boolean).join(", ");
         lines.push(
-          `• #${o.id_orden} — ${o.cliente || "Cliente"} — ${o.paso} (${o.progreso}%) — ${o.unidades} und — entrega ${fmtDate(o.fecha_entrega)}` +
-            (o.atrasada ? " — ATRASADA" : "") +
-            (o.urgente ? " — URGENTE" : "") +
-            (o.status !== "activa" ? ` — ${STATUS[o.status.toLowerCase()] || o.status}` : "")
+          `#${o.id_orden} ${o.cliente || "Cliente"} | ${o.paso} ${o.progreso}% | ${o.unidades} und | entrega ${o.fecha_entrega ?? "-"}` +
+            (marcas ? ` | ${marcas}` : "")
         );
       }
-      return ok(lines.join("\n"), structured);
+      return ok(lines.join("\n"), { total: data.total, resumen: data.resumen, filtros: filtros || null, ordenes: detalle });
     })
   );
 

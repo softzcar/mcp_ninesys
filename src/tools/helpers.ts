@@ -24,7 +24,9 @@ export function ok(
 ): ToolResult {
   let out = text;
   if (out.length > CHARACTER_LIMIT) {
-    out = out.slice(0, CHARACTER_LIMIT) + "\n\n[...salida truncada...]";
+    out =
+      out.slice(0, CHARACTER_LIMIT) +
+      "\n\n[SALIDA TRUNCADA: faltan datos a partir de aquí. No inventes ni completes lo que falta; usa filtros más específicos o dile al usuario que la lista es parcial.]";
   }
   return {
     content: [{ type: "text", text: out }],
