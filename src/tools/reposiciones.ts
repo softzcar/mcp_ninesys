@@ -47,6 +47,7 @@ interface HistorialResponse {
     unidades: number;
     por_estado: Record<string, number>;
     por_departamento_solicitante: Record<string, number>;
+    costo_por_departamento_solicitante: Record<string, number>;
     por_producto: Record<string, number>;
     costo_insumos: number;
     costo_mano_obra: number;
@@ -164,7 +165,11 @@ ${GLOSARIO_REPOSICIONES}`,
         `Reposiciones (empresa ${id_empresa}; ${filtros}): TOTAL ${d.total} | ${r.unidades} unidades`,
         `Costo total ${money(r.costo_total)} = insumos ${money(r.costo_insumos)} + mano de obra ${money(r.costo_mano_obra)} + tinta ${money(r.costo_tinta)}`,
         `Por estado: ${conteo(r.por_estado)}`,
-        `Por departamento que la pidió: ${conteo(r.por_departamento_solicitante)}`,
+        `Por departamento que la pidió (cantidad y costo): ${
+          Object.entries(r.por_departamento_solicitante)
+            .map(([k, v]) => `${una(k)}: ${v} (${money(r.costo_por_departamento_solicitante?.[k] ?? 0)})`)
+            .join(" | ") || "-"
+        }`,
         `Unidades por producto (principales): ${conteo(r.por_producto, 8)}`,
         "",
         d.total ? `Detalle de las ${d.reposiciones.length} más recientes${d.total > d.reposiciones.length ? ` (de ${d.total})` : ""}:` : "Sin reposiciones con esos filtros.",
