@@ -578,14 +578,18 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       lines.push("");
 
       for (const o of data.ordenes) {
+        const MAX_PRODS = 5;
+        const extra = o.productos_coincidentes.length - MAX_PRODS;
         const prods = o.productos_coincidentes
+          .slice(0, MAX_PRODS)
           .map((p) => {
             const specs = [p.talla, p.tela, p.corte && p.corte !== "No aplica" ? p.corte : null].filter(Boolean).join("/");
             return `${p.name} x${p.cantidad}${specs ? ` (${specs})` : ""}`;
           })
           .join(", ");
         lines.push(
-          `#${o.id_orden} ${o.cliente_nombre || "Cliente"} (${o.status}) | entrega ${o.fecha_entrega ?? "-"} | saldo ${money(o.saldo_pendiente)} | ${prods}`
+          `#${o.id_orden} ${o.cliente_nombre || "Cliente"} (${o.status}) | entrega ${o.fecha_entrega ?? "-"} | saldo ${money(o.saldo_pendiente)} | ${prods}` +
+            (extra > 0 ? ` (+${extra} líneas más; el desglose completo está en el resumen)` : "")
         );
       }
 
