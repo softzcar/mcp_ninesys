@@ -52,4 +52,4 @@ export const GLOSARIO_ESTADOS_ORDEN = `Estados de una orden:
 - 'terminada': producción terminada; la mercancía sigue en la empresa esperando envío o retiro del cliente. NO está en producción.
 - 'entregada': el cliente ya se llevó la mercancía. Fuera del flujo.
 - 'cancelada': no se seguirá produciendo (se conserva el registro en vez de borrarlo). Fuera del flujo.
-"En producción" / "en curso" = En espera + activa + pausada. "En la empresa" = eso + terminada. No existen otros estados.`;
+"En producción" / "en curso" = En espera + activa + pausada. "En la empresa" / "sin entregar" / "pendientes de entrega" = En espera + activa + pausada + terminada (todo lo no entregado ni cancelado). "Listas para entregar" = solo terminada. No existen otros estados.`;

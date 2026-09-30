@@ -177,7 +177,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       const MAX_SIN_DEUDA = 30;
       const recientes = [...sinDeuda].sort((x, y) => Number(y.id_orden) - Number(x.id_orden));
       const parts: string[] = [
-        `Cliente: ${data.customer_name || "cliente"} (empresa ${id_empresa}) | ${data.ordenes.length} órdenes en total | ` +
+        `Cliente: ${data.customer_name || "cliente"} (empresa ${id_empresa}) | ${data.ordenes.length} órdenes (sin contar canceladas) | ` +
           Object.entries(porEstado).map(([k, v]) => `${k}: ${v}`).join(", "),
         `Con saldo pendiente: ${conDeuda.length} | TOTAL ADEUDADO: ${money(totalDeuda)}`,
         "",
@@ -438,7 +438,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 - talla: talla del producto (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
 - tela: nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
 - corte: tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
-- status: estado de orden. Por defecto 'en_curso' = todo lo que sigue en la empresa (NO entregadas ni canceladas: en espera, activa, pausada y terminada). Para contar solo lo que está EN PRODUCCIÓN (sin las terminadas) usa 'en_produccion'. También permite 'todas' o un status puntual.
+- status: estado de orden. Por defecto 'en_curso' = todo lo que sigue en la empresa (NO entregadas ni canceladas: en espera, activa, pausada y terminada); úsalo para "sin entregar", "pendientes de entrega" o "en la empresa". Para contar solo lo que está EN PRODUCCIÓN (sin las terminadas) usa 'en_produccion'; para "listas para entregar" usa 'terminada'. También permite 'todas' o un status puntual.
 
 Úsala cuando el usuario pregunte:
 1. Por órdenes que contengan un producto, talla o tela ("órdenes con franelas", "pedidos de DTF", "órdenes con tela ESCOSIA").
