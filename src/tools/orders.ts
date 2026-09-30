@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiGet } from "../services/apiClient.js";
 import { cached } from "../services/cache.js";
-import { CACHE_TTL } from "../constants.js";
+import { CACHE_TTL, GLOSARIO_ESTADOS_ORDEN } from "../constants.js";
 import { phone, responseFormat } from "../schemas/inputs.js";
 import { ok, guard } from "./helpers.js";
 import type { RequestContext } from "./index.js";
@@ -129,7 +129,9 @@ Args:
 
 Devuelve las órdenes separadas en "con saldo pendiente" y "ya pagadas / sin deuda", más el total adeudado. Si el cliente no tiene órdenes o el teléfono no está registrado, lo indica.
 
-Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y el total adeudado; las pagadas son solo para consultar estado de un pedido puntual.`,
+Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y el total adeudado; las pagadas son solo para consultar estado de un pedido puntual.
+
+${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         phone,
         response_format: responseFormat,
@@ -210,7 +212,9 @@ Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y 
 
 Args:
   - id_orden (number): número/id de la orden.
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+
+${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         id_orden: z.coerce
           .number()
@@ -272,7 +276,9 @@ Args:
 Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes o sin asignar. El número a responder es 'total'. NO modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+
+${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         response_format: responseFormat,
       },
@@ -347,7 +353,9 @@ Devuelve para cada orden: número de orden, nombre del cliente, vendedor, fechas
 Args:
   - status (string, opcional): estado a filtrar ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada', o 'todas'). Default: 'todas'.
   - limit (number, opcional): cantidad máxima de órdenes a retornar (1 a 50, default: 20).
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+
+${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         status: z
           .string()
@@ -432,7 +440,7 @@ Args:
 - talla: talla del producto (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
 - tela: nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
 - corte: tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
-- status: estado de orden. Por defecto 'en_curso' (busca órdenes NO entregadas ni canceladas: 'activa', 'en espera', 'terminada'). También permite 'todas' o un status puntual.
+- status: estado de orden. Por defecto 'en_curso' = todo lo que sigue en la empresa (NO entregadas ni canceladas: en espera, activa, pausada y terminada). Para contar solo lo que está EN PRODUCCIÓN (sin las terminadas) usa 'en_produccion'. También permite 'todas' o un status puntual.
 
 Úsala cuando el usuario pregunte:
 1. Por órdenes que contengan un producto, talla o tela ("órdenes con franelas", "pedidos de DTF", "órdenes con tela ESCOSIA").
@@ -443,9 +451,11 @@ Args:
   - talla (string, opcional): talla a filtrar (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
   - tela (string, opcional): nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
   - corte (string, opcional): tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
-  - status (string, opcional): por defecto 'en_curso'. Opciones: 'en_curso', 'activa', 'en espera', 'terminada', 'entregada', 'todas'.
+  - status (string, opcional): por defecto 'en_curso'. Opciones: 'en_curso', 'en_produccion', 'activa', 'en espera', 'pausada', 'terminada', 'entregada', 'cancelada', 'todas'.
   - limit (number, opcional): cantidad máxima de órdenes a retornar (default: 20, max: 50).
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
+
+${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         producto: z
           .string()
@@ -466,7 +476,7 @@ Args:
         status: z
           .string()
           .optional()
-          .describe("Estado de orden. Por defecto 'en_curso' (no entregadas ni canceladas). Opciones: 'en_curso', 'activa', 'en espera', 'terminada', 'entregada', 'todas'."),
+          .describe("Estado de orden. Por defecto 'en_curso' (en la empresa: no entregadas ni canceladas, incluye terminadas). 'en_produccion' = solo en espera/activa/pausada. Otras: 'activa', 'en espera', 'pausada', 'terminada', 'entregada', 'cancelada', 'todas'."),
         limit: z
           .number()
           .int()

@@ -41,3 +41,15 @@ export const CHARACTER_LIMIT = 12000;
 
 // Límite duro de productos devueltos por búsqueda de catálogo.
 export const MAX_CATALOG_ITEMS = 25;
+
+// Significado de los estados de una orden (definido por el negocio). Se
+// incluye en la descripción de todas las herramientas de órdenes para que
+// la IA interprete igual que el taller.
+export const GLOSARIO_ESTADOS_ORDEN = `Estados de una orden:
+- 'En espera': creada, ningún departamento la ha empezado. EN PRODUCCIÓN.
+- 'activa': en fabricación (al menos un empleado inició su tarea). EN PRODUCCIÓN.
+- 'pausada': la fabricación se detuvo en un departamento (p. ej. falta de tela), con un motivo registrado; vuelve a 'activa' al reanudar. EN PRODUCCIÓN.
+- 'terminada': producción terminada; la mercancía sigue en la empresa esperando envío o retiro del cliente. NO está en producción.
+- 'entregada': el cliente ya se llevó la mercancía. Fuera del flujo.
+- 'cancelada': no se seguirá produciendo (se conserva el registro en vez de borrarlo). Fuera del flujo.
+"En producción" / "en curso" = En espera + activa + pausada. "En la empresa" = eso + terminada. No existen otros estados.`;
