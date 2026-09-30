@@ -255,6 +255,33 @@ export interface OrdersByStatusResponse {
   ordenes: OrderSummaryByStatus[];
 }
 
+// Órdenes en curso con el mismo criterio que la pantalla Control de
+// producción de app_multi (GET /internal/ordenes/{id}/en-curso).
+export interface OrderEnCurso {
+  id_orden: number;
+  status: string;
+  cliente: string | null;
+  paso: string;
+  progreso: number;
+  unidades: number;
+  urgente: boolean;
+  fecha_inicio: string | null;
+  fecha_entrega: string | null;
+  atrasada: boolean;
+}
+
+export interface OrdersEnCursoResponse {
+  total: number;
+  resumen: {
+    por_estado: Record<string, number>;
+    por_paso: Record<string, number>;
+    urgentes: number;
+    atrasadas: number;
+    por_asignar: number;
+  };
+  ordenes: OrderEnCurso[];
+}
+
 export interface OrderSearchProductItem {
   id: number;
   name: string;

@@ -10,6 +10,7 @@ import type {
   OrdersByPhoneResponse,
   OrderByIdResponse,
   OrdersByStatusResponse,
+  OrdersEnCursoResponse,
   OrdersSearchByProductResponse,
   Order,
   OrderCustomerInfo,
@@ -263,6 +264,70 @@ Args:
   );
 
   server.registerTool(
+    "ninesys_ordenes_en_curso",
+    {
+      title: "Órdenes en curso (Control de producción)",
+      description: `Órdenes que están realmente en proceso de fabricación, con EXACTAMENTE el mismo criterio que la pantalla "Control de producción" del sistema: estado activa, pausada o En espera, con lote de producción y con al menos un producto físico. Devuelve el TOTAL REAL (sin límite), un resumen (por estado, por paso/departamento actual, urgentes, atrasadas y por asignar) y la lista completa con cliente, paso actual, % de avance, unidades y fecha de entrega.
+
+Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes o sin asignar. El número a responder es 'total'. NO modifica nada. La empresa ya está fijada por la sesión.
+
+Args:
+  - response_format ('markdown' | 'json'): formato de salida (default: markdown).`,
+      inputSchema: {
+        response_format: responseFormat,
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guard("ninesys_ordenes_en_curso", async (args) => {
+      const { response_format } = args as { response_format: "markdown" | "json" };
+      const data = await cached(
+        `orders_en_curso:${id_empresa}`,
+        CACHE_TTL.orders,
+        () => apiGet<OrdersEnCursoResponse>(`/internal/ordenes/${id_empresa}/en-curso`, id_empresa)
+      );
+
+      if (!data || !data.total) {
+        return ok(`No hay órdenes en curso (en producción) en la empresa ${id_empresa}.`, {
+          total: 0,
+          resumen: data?.resumen ?? null,
+          ordenes: [],
+        });
+      }
+
+      const structured = { total: data.total, resumen: data.resumen, ordenes: data.ordenes };
+      if (response_format === "json") {
+        return ok(JSON.stringify(structured, null, 2), structured);
+      }
+
+      const r = data.resumen;
+      const conteo = (obj: Record<string, number>) =>
+        Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(" | ");
+      const lines = [
+        `Órdenes en curso (Control de producción, empresa ${id_empresa}): TOTAL ${data.total}`,
+        `Por estado: ${conteo(r.por_estado)}`,
+        `Por paso actual: ${conteo(r.por_paso)}`,
+        `Urgentes: ${r.urgentes} | Atrasadas (entrega vencida): ${r.atrasadas} | Por asignar: ${r.por_asignar}`,
+        "",
+        "Detalle (orden de la fila de producción):",
+      ];
+      for (const o of data.ordenes) {
+        lines.push(
+          `• #${o.id_orden} — ${o.cliente || "Cliente"} — ${o.paso} (${o.progreso}%) — ${o.unidades} und — entrega ${fmtDate(o.fecha_entrega)}` +
+            (o.atrasada ? " — ATRASADA" : "") +
+            (o.urgente ? " — URGENTE" : "") +
+            (o.status !== "activa" ? ` — ${STATUS[o.status.toLowerCase()] || o.status}` : "")
+        );
+      }
+      return ok(lines.join("\n"), structured);
+    })
+  );
+
+  server.registerTool(
     "ninesys_list_orders_by_status",
     {
       title: "Listar órdenes por estado",
@@ -277,7 +342,7 @@ Args:
 
 Devuelve para cada orden: número de orden, nombre del cliente, vendedor, fechas de inicio y entrega, total facturado, abonos, saldo pendiente, sobrepago, estado de pago y resumen de productos.
 
-Úsala cuando pregunten qué órdenes están en producción, cuáles están listas o terminadas, qué pedidos están pendientes de entrega, o qué órdenes recientes hay con un estado específico. NO modifica nada. La empresa ya está fijada por la sesión.
+Úsala para ver órdenes recientes con un estado específico (terminadas, entregadas, canceladas, etc.) o sus datos de pago. Devuelve como máximo 'limit' órdenes (default 20): NO sirve para contar. Para "¿cuántas órdenes hay en producción / en curso / en el taller?" o el detalle del taller usa SIEMPRE ninesys_ordenes_en_curso. NO modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - status (string, opcional): estado a filtrar ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada', o 'todas'). Default: 'todas'.
