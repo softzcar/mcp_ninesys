@@ -266,21 +266,23 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       title: "Órdenes en curso (Control de producción)",
       description: `Órdenes que están realmente en proceso de fabricación, con EXACTAMENTE el mismo criterio que la pantalla "Control de producción" del sistema: estado activa, pausada o En espera, con lote de producción y con al menos un producto físico. Devuelve SIEMPRE el TOTAL REAL y el resumen de TODAS las órdenes en curso (por estado, por paso/departamento actual, urgentes, atrasadas y por asignar, con los números de las urgentes y de las por asignar), y el detalle de las órdenes (todas o solo las del filtro).
 
-Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes, pausadas o sin asignar. Para listar un subconjunto USA LOS FILTROS (así el detalle llega completo). Responde solo con órdenes que aparezcan en la salida: nunca completes con números inventados. NO modifica nada. La empresa ya está fijada por la sesión.
+Úsala SIEMPRE que pregunten cuántas órdenes hay en producción, en curso o en el taller, en qué paso/departamento están, cuáles están atrasadas, urgentes, pausadas, sin asignar o son de SOLO IMPRESIÓN.
+
+"Solo impresión" = órdenes en producción cuyos productos son TODOS servicios de impresión (DTF, sublimación por metros, etc.; no requieren corte/costura/estampado): mismo criterio que el filtro SOLO IMPRESIÓN del taller. Para eso usa solo='solo_impresion' (NO busques por nombre de producto). Para listar un subconjunto USA LOS FILTROS (así el detalle llega completo). Responde solo con órdenes que aparezcan en la salida: nunca completes con números inventados. NO modifica nada. La empresa ya está fijada por la sesión.
 
 "Entrega" es la fecha de entrega COMPROMETIDA en la orden; "atrasada" = esa fecha ya pasó. La pantalla del taller muestra además una fecha PROYECTADA (estimación) que no es esta.
 
 Args (todos opcionales, se combinan):
-  - solo ('urgentes' | 'atrasadas' | 'por_asignar'): limita el detalle a ese grupo.
+  - solo ('urgentes' | 'atrasadas' | 'por_asignar' | 'solo_impresion'): limita el detalle a ese grupo.
   - paso (string): limita el detalle a un paso/departamento actual (ej. 'Limpieza', 'Estampado', 'Impresión', 'Por asignar', 'Terminado').
   - estado (string): limita el detalle a un estado ('activa', 'En espera', 'pausada').
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         solo: z
-          .enum(["urgentes", "atrasadas", "por_asignar"])
+          .enum(["urgentes", "atrasadas", "por_asignar", "solo_impresion"])
           .optional()
-          .describe("Limita el detalle a: 'urgentes', 'atrasadas' o 'por_asignar'."),
+          .describe("Limita el detalle a: 'urgentes', 'atrasadas', 'por_asignar' o 'solo_impresion'."),
         paso: z.string().optional().describe("Paso/departamento actual (ej. 'Limpieza', 'Estampado')."),
         estado: z.string().optional().describe("Estado: 'activa', 'En espera' o 'pausada'."),
       },
@@ -292,7 +294,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       },
     },
     guard("ninesys_ordenes_en_curso", async (args) => {
-      const { solo, paso, estado } = args as { solo?: "urgentes" | "atrasadas" | "por_asignar"; paso?: string; estado?: string };
+      const { solo, paso, estado } = args as { solo?: "urgentes" | "atrasadas" | "por_asignar" | "solo_impresion"; paso?: string; estado?: string };
       const data = await cached(
         `orders_en_curso:${id_empresa}`,
         CACHE_TTL.orders,
@@ -312,6 +314,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       if (solo === "urgentes") detalle = detalle.filter((o) => o.urgente);
       if (solo === "atrasadas") detalle = detalle.filter((o) => o.atrasada);
       if (solo === "por_asignar") detalle = detalle.filter((o) => o.paso === "Por asignar");
+      if (solo === "solo_impresion") detalle = detalle.filter((o) => o.solo_impresion);
       if (paso) detalle = detalle.filter((o) => norm(o.paso) === norm(paso));
       if (estado) detalle = detalle.filter((o) => norm(o.status) === norm(estado));
       const filtros = [solo && `solo ${solo}`, paso && `paso ${paso}`, estado && `estado ${estado}`].filter(Boolean).join(", ");
@@ -326,6 +329,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         `Por paso actual: ${conteo(r.por_paso)}`,
         `Urgentes (${r.urgentes}): ${ids(data.ordenes.filter((o) => o.urgente))}`,
         `Por asignar (${r.por_asignar}): ${ids(data.ordenes.filter((o) => o.paso === "Por asignar"))}`,
+        `Solo impresión (${r.solo_impresion ?? 0}): ${ids(data.ordenes.filter((o) => o.solo_impresion))}`,
         `Atrasadas (entrega comprometida vencida): ${r.atrasadas}`,
         "",
         filtros
@@ -333,7 +337,9 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
           : `Detalle de las ${detalle.length} órdenes (orden de la fila de producción):`,
       ];
       for (const o of detalle) {
-        const marcas = [o.urgente && "URGENTE", o.atrasada && "atrasada", o.status !== "activa" && o.status].filter(Boolean).join(", ");
+        const marcas = [o.urgente && "URGENTE", o.atrasada && "atrasada", o.solo_impresion && "solo impresión", o.status !== "activa" && o.status]
+          .filter(Boolean)
+          .join(", ");
         lines.push(
           `#${o.id_orden} ${o.cliente || "Cliente"} | ${o.paso} ${o.progreso}% | ${o.unidades} und | entrega ${o.fecha_entrega ?? "-"}` +
             (marcas ? ` | ${marcas}` : "")
@@ -438,6 +444,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 - talla: talla del producto (ej: 'S', 'M', 'L', 'XL', '14', 'Unica').
 - tela: nombre o tipo de tela (ej: 'ESCOSIA', 'LICRA SPRINT', 'DRY FIT', 'ALGODON').
 - corte: tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
+- NO la uses para "órdenes de solo impresión": eso lo responde ninesys_ordenes_en_curso con solo='solo_impresion'.
 - status: estado de orden. Por defecto 'en_curso' = todo lo que sigue en la empresa (NO entregadas ni canceladas: en espera, activa, pausada y terminada); úsalo para "sin entregar", "pendientes de entrega" o "en la empresa". Para contar solo lo que está EN PRODUCCIÓN (sin las terminadas) usa 'en_produccion'; para "listas para entregar" usa 'terminada'. También permite 'todas' o un status puntual.
 
 Úsala cuando el usuario pregunte:

@@ -269,6 +269,7 @@ export interface OrderEnCurso {
   fecha_inicio: string | null;
   fecha_entrega: string | null;
   atrasada: boolean;
+  solo_impresion: boolean;
 }
 
 export interface OrdersEnCursoResponse {
@@ -279,6 +280,7 @@ export interface OrdersEnCursoResponse {
     urgentes: number;
     atrasadas: number;
     por_asignar: number;
+    solo_impresion: number;
   };
   ordenes: OrderEnCurso[];
 }
