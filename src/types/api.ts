@@ -383,3 +383,86 @@ export interface GalleryCategory {
 export interface GalleryCategoriesResponse {
   categories: GalleryCategory[];
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard de Administración & Analítica (/internal/dashboard/*)
+// ---------------------------------------------------------------------------
+export interface DashboardSummaryResponse {
+  success: boolean;
+  id_empresa: number;
+  tasas: Record<string, { es_base: boolean; tasa_manual: number | null; actualizado: string | null }>;
+  tiempos_entrega: {
+    por_iniciar: number;
+    retrasado: number;
+    en_el_dia: number;
+    a_tiempo: number;
+    pausadas: number;
+    total_cola: number;
+  };
+  estado_ordenes: {
+    en_espera: number;
+    pausadas: number;
+    activas: number;
+    terminadas: number;
+    total: number;
+  };
+  ordenes_por_departamento: Array<{ departamento: string; cantidad: number }>;
+  ventas_mes_actual: {
+    ventas: number;
+    cobrado: number;
+    saldo_por_cobrar: number;
+    porcentaje_cobrado: number;
+    total_ordenes: number;
+  };
+  estado_disenos: {
+    asignados: number;
+    propuestas_enviadas: number;
+    aprobados_pagados: number;
+  };
+  resumen_semanal: Array<{ dia: string; fecha: string; total_ordenes: number }>;
+}
+
+export interface SalesPeriodData {
+  rango: { inicio: string; fin: string; descripcion: string; dias?: number };
+  ventas: number;
+  cobrado: number;
+  saldo_por_cobrar: number;
+  descuentos: number;
+  total_ordenes: number;
+  ticket_promedio: number;
+  porcentaje_cobrado: number;
+}
+
+export interface SalesComparisonResponse {
+  success: boolean;
+  id_empresa: number;
+  periodo: SalesPeriodData;
+  comparacion: SalesPeriodData | null;
+  variacion: {
+    diferencia_ventas: number;
+    porcentaje_variacion_ventas: number | null;
+    diferencia_cobrado: number;
+    porcentaje_variacion_cobrado: number | null;
+    diferencia_ordenes: number;
+    porcentaje_variacion_ordenes: number | null;
+    diferencia_ticket: number;
+    porcentaje_variacion_ticket: number | null;
+  } | null;
+}
+
+export interface TopProductItem {
+  id_producto: number;
+  nombre: string;
+  unidades: number;
+  posicion: number;
+  porcentaje: number;
+}
+
+export interface TopProductsResponse {
+  success: boolean;
+  id_empresa: number;
+  rango: { inicio: string; fin: string; descripcion: string };
+  criterio: "producidos" | "pedidos";
+  total_unidades: number;
+  ranking: TopProductItem[];
+}
