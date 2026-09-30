@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiGet } from "../services/apiClient.js";
 import { cached } from "../services/cache.js";
 import { CACHE_TTL, GLOSARIO_ESTADOS_ORDEN } from "../constants.js";
-import { phone, responseFormat } from "../schemas/inputs.js";
+import { phone } from "../schemas/inputs.js";
 import { ok, guard } from "./helpers.js";
 import type { RequestContext } from "./index.js";
 import type {
@@ -125,16 +125,14 @@ export function registerOrderTools(server: McpServer, ctx: RequestContext): void
 
 Args:
   - phone (string): teléfono del cliente en solo dígitos (ej: "5804241234567").
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
-Devuelve las órdenes separadas en "con saldo pendiente" y "ya pagadas / sin deuda", más el total adeudado. Si el cliente no tiene órdenes o el teléfono no está registrado, lo indica.
+Devuelve primero un resumen de TODAS sus órdenes (cantidad, por estado, total adeudado), luego el detalle completo de las órdenes con saldo pendiente y las demás en una línea cada una (las 30 más recientes). Si el cliente no tiene órdenes o el teléfono no está registrado, lo indica.
 
 Nota para preguntas de deuda/saldo: usa SOLO las órdenes con saldo pendiente y el total adeudado; las pagadas son solo para consultar estado de un pedido puntual.
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
         phone,
-        response_format: responseFormat,
       },
       annotations: {
         readOnlyHint: true,
@@ -144,10 +142,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       },
     },
     guard("ninesys_get_orders_by_phone", async (args) => {
-      const { phone: tel, response_format } = args as {
-        phone: string;
-        response_format: "markdown" | "json";
-      };
+      const { phone: tel } = args as { phone: string };
       const data = await cached(
         `orders:${id_empresa}:${tel}`,
         CACHE_TTL.orders,
@@ -177,20 +172,26 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         sin_deuda: sinDeuda,
       };
 
-      if (response_format === "json") {
-        return ok(JSON.stringify(structured, null, 2), structured);
-      }
-
-      const parts: string[] = [`Órdenes de ${data.customer_name || "cliente"} (empresa ${id_empresa}):`, ""];
-      parts.push("== Con saldo pendiente ==");
-      if (conDeuda.length) {
-        parts.push(...conDeuda.map(formatOrderSimple));
-        if (conDeuda.length > 1) parts.push(`\nTotal adeudado: ${money(totalDeuda)}`);
-      } else {
-        parts.push("(Sin órdenes con saldo pendiente.)");
-      }
-      if (sinDeuda.length) {
-        parts.push("", "== Ya pagadas / sin deuda ==", ...sinDeuda.map(formatOrderSimple));
+      const porEstado: Record<string, number> = {};
+      for (const o of data.ordenes) porEstado[o.status] = (porEstado[o.status] || 0) + 1;
+      const MAX_SIN_DEUDA = 30;
+      const recientes = [...sinDeuda].sort((x, y) => Number(y.id_orden) - Number(x.id_orden));
+      const parts: string[] = [
+        `Cliente: ${data.customer_name || "cliente"} (empresa ${id_empresa}) | ${data.ordenes.length} órdenes en total | ` +
+          Object.entries(porEstado).map(([k, v]) => `${k}: ${v}`).join(", "),
+        `Con saldo pendiente: ${conDeuda.length} | TOTAL ADEUDADO: ${money(totalDeuda)}`,
+        "",
+        "== Con saldo pendiente ==",
+        ...(conDeuda.length ? conDeuda.map(formatOrderSimple) : ["(Sin órdenes con saldo pendiente.)"]),
+      ];
+      if (recientes.length) {
+        parts.push(
+          "",
+          `== Sin deuda (${recientes.length}; ${recientes.length > MAX_SIN_DEUDA ? `se listan las ${MAX_SIN_DEUDA} más recientes` : "todas"}) ==`,
+          ...recientes
+            .slice(0, MAX_SIN_DEUDA)
+            .map((o) => `#${o.id_orden} (${o.status}) | entrega ${o.fecha_entrega ?? "-"} | total ${money(o.pago_total)}`)
+        );
       }
       return ok(parts.join("\n"), structured);
     })
@@ -212,7 +213,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 
 Args:
   - id_orden (number): número/id de la orden.
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
@@ -221,7 +221,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
           .int()
           .positive()
           .describe("Número/id de la orden a consultar (ej: 6998)."),
-        response_format: responseFormat,
       },
       annotations: {
         readOnlyHint: true,
@@ -231,10 +230,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       },
     },
     guard("ninesys_get_order_by_id", async (args) => {
-      const { id_orden, response_format } = args as {
-        id_orden: number;
-        response_format: "markdown" | "json";
-      };
+      const { id_orden } = args as { id_orden: number };
       const data = await cached(
         `order:${id_empresa}:${id_orden}`,
         CACHE_TTL.orders,
@@ -260,9 +256,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         orden: data.orden,
         images,
       };
-      if (response_format === "json") {
-        return ok(JSON.stringify(structured, null, 2), structured);
-      }
       return ok(formatOrderDetail(data.orden, data.cliente, data.customer_name), structured);
     })
   );
@@ -365,12 +358,11 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 
 Devuelve para cada orden: número de orden, nombre del cliente, vendedor, fechas de inicio y entrega, total facturado, abonos, saldo pendiente, sobrepago, estado de pago y resumen de productos.
 
-Úsala para ver órdenes recientes con un estado específico (terminadas, entregadas, canceladas, etc.) o sus datos de pago. Devuelve como máximo 'limit' órdenes (default 20): NO sirve para contar. Para "¿cuántas órdenes hay en producción / en curso / en el taller?" o el detalle del taller usa SIEMPRE ninesys_ordenes_en_curso. NO modifica nada. La empresa ya está fijada por la sesión.
+Úsala para ver órdenes recientes con un estado específico (terminadas, entregadas, canceladas, etc.) o sus datos de pago. 'TOTAL' es la cantidad REAL de órdenes con ese estado; la lista trae solo las 'limit' más recientes (default 20). Para "¿cuántas órdenes hay en producción / en curso / en el taller?" o el detalle del taller usa SIEMPRE ninesys_ordenes_en_curso. NO modifica nada. La empresa ya está fijada por la sesión.
 
 Args:
   - status (string, opcional): estado a filtrar ('activa', 'en espera', 'terminada', 'entregada', 'pausada', 'cancelada', o 'todas'). Default: 'todas'.
   - limit (number, opcional): cantidad máxima de órdenes a retornar (1 a 50, default: 20).
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
@@ -385,7 +377,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
           .max(50)
           .optional()
           .describe("Cantidad máxima de órdenes a retornar (default: 20, max: 50)."),
-        response_format: responseFormat,
       },
       annotations: {
         readOnlyHint: true,
@@ -395,11 +386,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       },
     },
     guard("ninesys_list_orders_by_status", async (args) => {
-      const { status = "todas", limit = 20, response_format } = args as {
-        status?: string;
-        limit?: number;
-        response_format: "markdown" | "json";
-      };
+      const { status = "todas", limit = 20 } = args as { status?: string; limit?: number };
       const data = await cached(
         `orders_status:${id_empresa}:${status}:${limit}`,
         CACHE_TTL.orders,
@@ -420,16 +407,13 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 
       const structured = {
         total: data.total,
+        devueltas: data.devueltas ?? data.ordenes.length,
         status_filter: data.status_filter,
         ordenes: data.ordenes,
       };
 
-      if (response_format === "json") {
-        return ok(JSON.stringify(structured, null, 2), structured);
-      }
-
       const lines = [
-        `Órdenes con estado '${data.status_filter}' (empresa ${id_empresa}, total devueltas: ${data.total}):`,
+        `Órdenes con estado '${data.status_filter}' (empresa ${id_empresa}): TOTAL ${data.total} (se listan las ${data.ordenes.length} más recientes)`,
         "",
       ];
       for (const o of data.ordenes) {
@@ -437,11 +421,8 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
           ? o.productos_resumen.map((p) => `${p.name} x ${p.cantidad}${p.talla ? ` (${p.talla})` : ""}`).join(", ")
           : "Sin productos registrados";
         lines.push(
-          `• Orden #${o.id_orden} — ${o.cliente_nombre || "Cliente"} (${STATUS[o.status] || o.status})`,
-          `  Vendedor: ${o.vendedor || "-"} | Entrega: ${fmtDate(o.fecha_entrega)}`,
-          `  Total: ${money(o.pago_total)} | Abonos: ${money(o.total_abonos)} | Saldo: ${money(o.saldo_pendiente)} [${o.estado_pago}]`,
-          `  Productos: ${prodSummary}`,
-          ""
+          `#${o.id_orden} ${o.cliente_nombre || "Cliente"} (${o.status}) | vend. ${o.vendedor || "-"} | entrega ${o.fecha_entrega ?? "-"} | ` +
+            `total ${money(o.pago_total)} abonos ${money(o.total_abonos)} saldo ${money(o.saldo_pendiente)} [${o.estado_pago}] | ${prodSummary}`
         );
       }
       return ok(lines.join("\n"), structured);
@@ -470,7 +451,6 @@ Args:
   - corte (string, opcional): tipo de corte (ej: 'Damas', 'Caballeros', 'Niños').
   - status (string, opcional): por defecto 'en_curso'. Opciones: 'en_curso', 'en_produccion', 'activa', 'en espera', 'pausada', 'terminada', 'entregada', 'cancelada', 'todas'.
   - limit (number, opcional): cantidad máxima de órdenes a retornar (default: 20, max: 50).
-  - response_format ('markdown' | 'json'): formato de salida (default: markdown).
 
 ${GLOSARIO_ESTADOS_ORDEN}`,
       inputSchema: {
@@ -501,7 +481,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
           .max(50)
           .optional()
           .describe("Cantidad máxima de órdenes a retornar (default: 20, max: 50)."),
-        response_format: responseFormat,
       },
       annotations: {
         readOnlyHint: true,
@@ -518,7 +497,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         corte,
         status = "en_curso",
         limit = 20,
-        response_format,
       } = args as {
         producto?: string;
         talla?: string;
@@ -526,7 +504,6 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
         corte?: string;
         status?: string;
         limit?: number;
-        response_format: "markdown" | "json";
       };
 
       const cacheKey = `orders_prod:${id_empresa}:${producto || ""}:${talla || ""}:${tela || ""}:${corte || ""}:${status}:${limit}`;
@@ -563,14 +540,11 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 
       const structured = {
         total: data.total,
+        devueltas: data.devueltas ?? data.ordenes.length,
         resumen: data.resumen,
         filters: data.filters,
         ordenes: data.ordenes,
       };
-
-      if (response_format === "json") {
-        return ok(JSON.stringify(structured, null, 2), structured);
-      }
 
       const filtrosTxt = [
         data.filters.producto ? `Producto: "${data.filters.producto}"` : null,
@@ -584,7 +558,8 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
 
       const totalUnidades = data.resumen?.total_unidades !== undefined ? data.resumen.total_unidades : "N/A";
       const lines = [
-        `Órdenes encontradas: ${data.total} | Total de prendas/unidades coincidentes: ${totalUnidades}`,
+        `Órdenes encontradas: TOTAL ${data.total} | Prendas/unidades coincidentes (de TODAS): ${totalUnidades}` +
+          (data.ordenes.length < data.total ? ` | se listan las ${data.ordenes.length} más recientes` : ""),
         `Filtros: ${filtrosTxt}`,
       ];
 
@@ -603,23 +578,15 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       lines.push("");
 
       for (const o of data.ordenes) {
+        const prods = o.productos_coincidentes
+          .map((p) => {
+            const specs = [p.talla, p.tela, p.corte && p.corte !== "No aplica" ? p.corte : null].filter(Boolean).join("/");
+            return `${p.name} x${p.cantidad}${specs ? ` (${specs})` : ""}`;
+          })
+          .join(", ");
         lines.push(
-          `• Orden #${o.id_orden} — ${o.cliente_nombre || "Cliente"} (${STATUS[o.status] || o.status})`,
-          `  Vendedor: ${o.vendedor || "-"} | Entrega: ${fmtDate(o.fecha_entrega)}`,
-          `  Total: ${money(o.pago_total)} | Saldo: ${money(o.saldo_pendiente)} [${o.estado_pago}]`,
-          `  Productos coincidentes:`
+          `#${o.id_orden} ${o.cliente_nombre || "Cliente"} (${o.status}) | entrega ${o.fecha_entrega ?? "-"} | saldo ${money(o.saldo_pendiente)} | ${prods}`
         );
-        for (const p of o.productos_coincidentes) {
-          const specs = [
-            p.talla ? `Talla: ${p.talla}` : null,
-            p.tela ? `Tela: ${p.tela}` : null,
-            p.corte && p.corte !== "No aplica" ? `Corte: ${p.corte}` : null,
-          ]
-            .filter(Boolean)
-            .join(", ");
-          lines.push(`    - ${p.name} x ${p.cantidad}${specs ? ` [${specs}]` : ""} @ ${money(p.precio)}`);
-        }
-        lines.push("");
       }
 
       return ok(lines.join("\n"), structured);

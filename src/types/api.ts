@@ -251,6 +251,7 @@ export interface OrderSummaryByStatus {
 
 export interface OrdersByStatusResponse {
   total: number;
+  devueltas?: number;
   status_filter: string;
   ordenes: OrderSummaryByStatus[];
 }
@@ -320,6 +321,7 @@ export interface OrderSearchItem {
 
 export interface OrdersSearchByProductResponse {
   total: number;
+  devueltas?: number;
   resumen?: OrderSearchSummary;
   filters: {
     producto?: string | null;
