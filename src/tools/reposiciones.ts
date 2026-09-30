@@ -28,13 +28,11 @@ interface Reposicion {
   costo_mano_obra: number;
   costo_tinta: number;
   costo_total: number;
-  orden_en_produccion?: boolean;
 }
 
 interface EnCursoResponse {
   por_aprobar: Reposicion[];
   en_curso: Reposicion[];
-  aprobadas_sin_asignar: Reposicion[];
   totales: Record<string, number>;
 }
 
@@ -61,7 +59,8 @@ const money = (n: number) => `$${Number(n).toFixed(2)}`;
 const una = (t: string | null) => (t || "").replace(/\s+/g, " ").trim();
 
 export const GLOSARIO_REPOSICIONES = `Reposición = volver a producir parte de una orden porque algo salió mal (se dañó, faltó o salió con error). La pide un empleado desde su departamento con un motivo; un encargado la aprueba (asignándola a un empleado) o la rechaza.
-Estados: 'por_aprobar' (pedida, sin revisar), 'en_curso' (aprobada y asignada, sin terminar), 'terminada', 'rechazada' (con motivo del encargado), 'aprobada_sin_asignar' (aprobada sin empleado ni cierre: la pantalla del taller no la muestra), 'inconsistente' (asignada sin aprobar), 'eliminada'.
+Una reposición recorre varios departamentos, desde el asignado hasta el que la pidió (incluido). Cuando un empleado termina su parte, la reposición pasa al siguiente departamento SIN empleado hasta que un supervisor la asigna a alguien.
+Estados: 'por_aprobar' (pedida, sin revisar), 'en_curso' (aprobada y asignada a un empleado, sin terminar), 'esperando_departamento' (aprobada y detenida en un departamento, sin empleado asignado todavía; para el taller sigue EN CURSO), 'terminada', 'rechazada' (con motivo del encargado), 'inconsistente' (asignada sin aprobar), 'eliminada'.
 Costo de una reposición = insumos consumidos + mano de obra (comisiones pagadas por ella) + tinta; es el mismo cálculo del reporte de reposiciones.`;
 
 function linea(r: Reposicion): string {
@@ -81,9 +80,9 @@ export function registerReposicionTools(server: McpServer, ctx: RequestContext):
     "ninesys_reposiciones_en_curso",
     {
       title: "Reposiciones pendientes y en curso",
-      description: `Lo que el taller tiene pendiente de reposiciones AHORA, con el mismo criterio de la pantalla Control de producción: las por aprobar y las en curso, con orden, producto, unidades, quién la pidió y desde qué departamento, motivo, a quién se asignó y su costo hasta ahora. Incluye aparte las 'aprobadas sin asignar' (la pantalla no las muestra), destacando las de órdenes que siguen en producción.
+      description: `Lo que el taller tiene pendiente de reposiciones AHORA, con el mismo criterio de la pantalla Control de producción: las por aprobar y las en curso (incluye las que esperan en un departamento a que se les asigne un empleado), con orden, producto, unidades, quién la pidió y desde qué departamento, motivo, a quién está asignada (o en qué departamento espera) y su costo hasta ahora.
 
-Úsala cuando pregunten si hay reposiciones pendientes, por aprobar o en curso, qué se está reponiendo o quién tiene reposiciones asignadas. Para historial, costos por período o por departamento usa ninesys_historial_reposiciones. NO modifica nada.
+Úsala cuando pregunten si hay reposiciones pendientes, por aprobar o en curso, qué se está reponiendo, cuáles esperan asignación o quién tiene reposiciones asignadas. Para historial, costos por período o por departamento usa ninesys_historial_reposiciones. NO modifica nada.
 
 ${GLOSARIO_REPOSICIONES}`,
       inputSchema: {},
@@ -92,22 +91,19 @@ ${GLOSARIO_REPOSICIONES}`,
     guard("ninesys_reposiciones_en_curso", async () => {
       const d = await apiGet<EnCursoResponse>(`/internal/reposiciones/${id_empresa}/en-curso`, id_empresa);
       const t = d.totales;
-      const enProd = d.aprobadas_sin_asignar.filter((r) => r.orden_en_produccion);
       const lines = [
-        `Reposiciones (empresa ${id_empresa}): por aprobar ${t.por_aprobar} | en curso ${t.en_curso} | aprobadas sin asignar ${t.aprobadas_sin_asignar} (${enProd.length} de órdenes aún en producción)`,
+        `Reposiciones (empresa ${id_empresa}): por aprobar ${t.por_aprobar} | en curso ${t.en_curso} (${t.con_empleado_asignado} con empleado asignado, ${t.esperando_departamento} esperando asignación en un departamento)`,
         "",
         "== Por aprobar ==",
         ...(d.por_aprobar.length ? d.por_aprobar.map(linea) : ["(ninguna)"]),
         "",
         "== En curso ==",
-        ...(d.en_curso.length ? d.en_curso.map(linea) : ["(ninguna)"]),
-        "",
-        "== Aprobadas sin asignar de órdenes en producción (posiblemente olvidadas) ==",
-        ...(enProd.length ? enProd.map(linea) : ["(ninguna)"]),
+        ...(d.en_curso.length
+          ? d.en_curso.map((r) => linea(r) + (r.estado === "esperando_departamento" ? ` | ESPERANDO asignación en ${r.departamento_asignado || "un departamento"}` : ""))
+          : ["(ninguna)"]),
       ];
-      const resto = t.aprobadas_sin_asignar - enProd.length;
-      if (resto > 0) {
-        lines.push("", `Además hay ${resto} aprobadas sin asignar de órdenes ya terminadas o entregadas (restos antiguos; no se detallan).`);
+      if (t.restos_de_ordenes_cerradas > 0) {
+        lines.push("", `Además hay ${t.restos_de_ordenes_cerradas} reposiciones detenidas de órdenes ya entregadas o canceladas (restos antiguos; no se detallan).`);
       }
       return ok(lines.join("\n"), { ...d });
     })
@@ -125,7 +121,7 @@ Args (todos opcionales):
   - desde, hasta ('YYYY-MM-DD'): rango de fechas de la solicitud.
   - id_orden (number): solo las de esa orden.
   - departamento (string): departamento que la pidió (ej. 'Corte', 'Estampado').
-  - estado ('terminada' | 'rechazada' | 'en_curso' | 'por_aprobar' | 'aprobada_sin_asignar' | 'inconsistente' | 'eliminada' | 'todas'): default todas menos eliminadas.
+  - estado ('terminada' | 'rechazada' | 'en_curso' | 'por_aprobar' | 'esperando_departamento' | 'inconsistente' | 'eliminada' | 'todas'): default todas menos eliminadas.
   - limit (1-50, default 20): cuántas listar en el detalle.
 
 ${GLOSARIO_REPOSICIONES}`,
@@ -135,7 +131,7 @@ ${GLOSARIO_REPOSICIONES}`,
         id_orden: z.coerce.number().int().positive().optional().describe("Número de orden."),
         departamento: z.string().optional().describe("Departamento que la pidió."),
         estado: z
-          .enum(["terminada", "rechazada", "en_curso", "por_aprobar", "aprobada_sin_asignar", "inconsistente", "eliminada", "todas"])
+          .enum(["terminada", "rechazada", "en_curso", "por_aprobar", "esperando_departamento", "inconsistente", "eliminada", "todas"])
           .optional(),
         limit: z.number().int().min(1).max(50).optional(),
       },
