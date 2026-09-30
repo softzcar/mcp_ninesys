@@ -578,7 +578,7 @@ ${GLOSARIO_ESTADOS_ORDEN}`,
       lines.push("");
 
       for (const o of data.ordenes) {
-        const MAX_PRODS = 5;
+        const MAX_PRODS = 3;
         const extra = o.productos_coincidentes.length - MAX_PRODS;
         const prods = o.productos_coincidentes
           .slice(0, MAX_PRODS)
