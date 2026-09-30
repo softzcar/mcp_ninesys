@@ -466,3 +466,73 @@ export interface TopProductsResponse {
   total_unidades: number;
   ranking: TopProductItem[];
 }
+
+// ---------------------------------------------------------------------------
+// Empleados y Ventas (/internal/empleados/*)
+// ---------------------------------------------------------------------------
+export interface EmployeeItem {
+  id_usuario: number;
+  nombre: string;
+  email: string;
+  telefono: string;
+  departamento_principal: string;
+  departamentos_asignados: string[];
+  activo: boolean;
+  acceso_sistema: boolean;
+  status: "activo" | "inactivo";
+}
+
+export interface EmployeeListResponse {
+  success: boolean;
+  total: number;
+  empleados: EmployeeItem[];
+}
+
+export interface EmployeeSalesMetrics {
+  total_ordenes: number;
+  total_ventas: number;
+  total_cobrado: number;
+  saldo_por_cobrar: number;
+  total_descuentos: number;
+  ticket_promedio: number;
+  porcentaje_cobrado: number;
+}
+
+export interface EmployeeRecentOrder {
+  id_orden: number;
+  cliente: string;
+  monto: number;
+  status: string;
+  fecha: string;
+}
+
+export interface EmployeeSalesResponse {
+  success: boolean;
+  rango: { inicio: string; fin: string; descripcion: string };
+  empleado?: {
+    id_usuario: number;
+    nombre: string;
+    departamento: string;
+  };
+  metricas?: EmployeeSalesMetrics;
+  por_estado?: Record<string, number>;
+  ultimas_ordenes?: EmployeeRecentOrder[];
+  totales?: {
+    total_ordenes: number;
+    total_ventas: number;
+    total_cobrado: number;
+  };
+  ranking?: Array<{
+    id_usuario: number | null;
+    nombre: string;
+    departamento: string;
+    total_ordenes: number;
+    total_ventas: number;
+    total_cobrado: number;
+    saldo_por_cobrar: number;
+    ticket_promedio: number;
+    posicion: number;
+    porcentaje_ventas: number;
+  }>;
+}
+
