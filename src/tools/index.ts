@@ -5,6 +5,7 @@ import { registerCustomerTools } from "./customers.js";
 import { registerCatalogMetaTools } from "./catalogMeta.js";
 import { registerGalleryTools } from "./gallery.js";
 import { registerDesignTools } from "./designs.js";
+import { registerReposicionTools } from "./reposiciones.js";
 
 // Contexto de la petición inyectado por el servidor. La empresa se identifica en
 // la capa de acceso (cabecera X-Ninesys-Empresa) y las tools la reciben aquí,
@@ -21,4 +22,5 @@ export function registerAllTools(server: McpServer, ctx: RequestContext): void {
   registerCatalogMetaTools(server, ctx);
   registerGalleryTools(server, ctx);
   registerDesignTools(server, ctx);
+  registerReposicionTools(server, ctx);
 }

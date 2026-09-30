@@ -109,6 +109,14 @@ function formatOrderDetail(o: Order, cliente?: OrderCustomerInfo, custName?: str
       lines.push(`    - ${p.name} x ${p.cantidad}${specsStr}${priceStr}`);
     }
   }
+  if (o.reposiciones?.length) {
+    lines.push(`  Reposiciones (${o.reposiciones.length}; detalle y costos con ninesys_historial_reposiciones):`);
+    for (const r of o.reposiciones) {
+      lines.push(`    - #${r.id_reposicion} ${r.fecha} ${r.estado}: ${(r.producto || "").trim()} x${r.unidades}`);
+    }
+  } else {
+    lines.push(`  Reposiciones: ninguna.`);
+  }
   return lines.join("\n");
 }
 

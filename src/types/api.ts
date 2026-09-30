@@ -212,6 +212,7 @@ export interface Order {
   metodos_pago?: OrderPaymentMethod[];
   productos: OrderProduct[];
   imagenes_observaciones?: Array<{ url: string; caption: string }>;
+  reposiciones?: Array<{ id_reposicion: number; producto: string | null; unidades: number; motivo: string | null; fecha: string; estado: string }>;
 }
 
 export interface OrdersByPhoneResponse {
