@@ -1,0 +1,20 @@
+- **Solicitud del Usuario:** Que el asistente siempre muestre el estado real de los datos: desactivar la caché del MCP para que no responda con información vieja (un abono ya hecho que figura impago, un producto nuevo que "no existe").
+- **Fecha y Hora:** 2026-09-28 15:02 a 15:03 (rango de commits)
+- **Proyecto(s):** mcp_ninesys + ninesys-ai-agent
+- **Archivos Involucrados:** 
+  - `mcp_ninesys/src/constants.ts` (TTL de caché)
+  - `ninesys-ai-agent/src/mcpClient.ts` (TTL de la lista de herramientas)
+- **Commits Relacionados:** 
+  - mcp_ninesys: `f87b46b`, `2a81de7`
+  - ninesys-ai-agent: `b5583a4`
+- **Acción Realizada:** Primero se quitó la caché de órdenes (el saldo y el estado cambian al registrar abonos y el personal consulta en tiempo real) y se dejó el cliente en 60 s; luego, por decisión de producto, se pusieron TODOS los TTL de datos del MCP en 0 (catálogo, clientes, telas, tallas, horario y galería): el asistente debe reflejar el estado real en tiempo real. En el agente, el TTL de la lista de herramientas bajó de 10 min a 60 s para que una herramienta nueva sea visible en menos de un minuto sin reiniciar.
+- **Inconvenientes y Desafíos:** La caché daba respuestas obsoletas que el personal notaría de inmediato (un abono ya registrado seguía figurando impago).
+- **Decisión Final y Justificación:** Siempre en vivo, aceptando el costo de más consultas a la API: las consultas del asistente son pocas y la exactitud importa más que la latencia.
+- **Herramienta(s) Utilizada(s):** `git`, `npm`, `Write`/`Edit`, `ssh`, `curl`
+- **Resultado:** Éxito.
+- **Verificación:** Compila limpio y desplegado a Desarrollo; las consultas posteriores reflejan los cambios al instante.
+- **Logro Conseguido:** Respuestas del asistente siempre actualizadas.
+- **Referencias de Sesión (Contexto):**
+  - Sesión Claude Code: https://claude.ai/code/session_01DGUJFb8c9NYbAFUZLRQfLE
+- **Observaciones de Gemini:** N/A (tarea ejecutada por Claude Code). Bitácora RECONSTRUIDA el 2026-10-01 a partir de los commits y las notas del proyecto, porque en su momento no se escribió.
+- **Respuesta de Gemini:** N/A.

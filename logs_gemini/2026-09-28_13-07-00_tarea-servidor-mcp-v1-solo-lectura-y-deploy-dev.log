@@ -1,0 +1,22 @@
+- **Solicitud del Usuario:** Crear un servidor MCP (Model Context Protocol) que unifique cómo las apps con IA del ecosistema obtienen los datos de la base, para reemplazar el `contextEnricher` especulativo de `msg_ninesys` (que pre-carga todo al prompt) y el chat PHP de `app_multi` que nunca funcionó bien, y dejarlo funcionando en Desarrollo.
+- **Fecha y Hora:** 2026-09-28 13:07 a 13:30 (rango de commits)
+- **Proyecto(s):** mcp_ninesys (repo nuevo) + ninesys-hub (script de despliegue)
+- **Archivos Involucrados:** 
+  - `mcp_ninesys/src/index.ts`, `auth.ts`, `constants.ts` (servidor Express, Bearer por app, empresa obligatoria)
+  - `mcp_ninesys/src/services/apiClient.ts`, `cache.ts` (cliente de la API con timeout, reintentos, circuit breaker y caché)
+  - `mcp_ninesys/src/tools/{products,orders,customers,catalogMeta,gallery,helpers,index}.ts`, `src/types/api.ts`
+  - `ninesys-hub/bin/deploy_mcp_dev.sh`, `ninesys-hub/current_versions.json`
+- **Commits Relacionados:** 
+  - mcp_ninesys: `97250a7` (23 archivos, 4.335 líneas)
+  - ninesys-hub: `312bf3c` (deploy del MCP a Desarrollo)
+- **Acción Realizada:** Servidor MCP v1 de SOLO LECTURA en Node + TypeScript con 9 herramientas sobre los endpoints `/internal` de ninesys-api: `ninesys_search_products`, `ninesys_list_design_services`, `ninesys_get_orders_by_phone`, `ninesys_get_customer_by_phone`, `ninesys_list_fabrics`, `ninesys_list_sizes`, `ninesys_get_business_hours`, `ninesys_list_gallery_categories` y `ninesys_list_gallery_images`. Transporte Streamable HTTP stateless (JSON) sobre Express: `/mcp` protegido con Bearer (`MCP_CLIENT_TOKENS`, formato `nombre:token`, un token por app) y `/health` público. Seguridad multi-empresa: la empresa es OBLIGATORIA a nivel de acceso mediante la cabecera `X-Ninesys-Empresa` (validada por el middleware junto al Bearer) y se inyecta del lado del servidor a cada herramienta y a la API; `id_empresa` se eliminó de todos los esquemas de entrada, así que el modelo de IA nunca controla la empresa. El MCP reutiliza `MSG_SERVICE_INTERNAL_TOKEN` contra `/internal/*`. Se portó el cliente de API de `aiService.js`/`catalogClient.js` (timeout + reintentos + circuit breaker + caché TTL). Repo publicado en GitHub (`softzcar/mcp_ninesys`, rama `main`, tag `v0.1.0`). Despliegue a Desarrollo: DNS en Cloudflare (lo puso el usuario), sitio `mcp.nineteengreen.com` creado en CyberPanel por CLI (`createWebsite`, SSL Let's Encrypt emitido pese a Cloudflare), repo clonado, `.env` con el token interno de la API y los tokens de cliente, `npm install` + build, proceso PM2 `ninesys-mcp-server` (puerto 3100) y proxy OpenLiteSpeed (extprocessor hacia 127.0.0.1:3100 + context `/`). Script estándar `deploy_mcp_dev.sh` y registro `mcp_ninesys dev v0.1.0` en `current_versions.json`.
+- **Inconvenientes y Desafíos:** Montar el subdominio requirió coordinar con el usuario la parte de DNS y resolver a mano en el servidor lo que el panel hace por interfaz (sitio, SSL y proxy de OpenLiteSpeed por línea de comandos).
+- **Decisión Final y Justificación:** Servidor de herramientas puro (estándar MCP): NO corre el LLM; cada app mantiene su Gemini y usa un adaptador (ver `ninesys-ai-agent`). Solo lectura en v1; las escrituras futuras irán SOLO por endpoints de la API, nunca con acceso directo a la base (corrige el patrón de `presupuestoService.js` de `msg_ninesys`, que hace INSERTs directos). Empresa por cabecera y no por argumento, para que el modelo no pueda cambiarla.
+- **Herramienta(s) Utilizada(s):** `git`, `npm`, `Write`/`Edit`, `ssh`, `curl`, `cyberpanel` CLI, `pm2`, OpenLiteSpeed (vhost), `npm run build`
+- **Resultado:** Éxito.
+- **Verificación:** Compila limpio (`npm run build`). En Desarrollo: `/health` OK; 401 sin token o con token inválido; 400 sin la cabecera de empresa; validación de entradas con Zod; y datos reales de la empresa 208 ("19 print": horario y catálogo de productos) a través de `https://mcp.nineteengreen.com`.
+- **Logro Conseguido:** Capa única y segura de herramientas de datos para el asistente IA, desplegada y verificada en Desarrollo.
+- **Referencias de Sesión (Contexto):**
+  - Sesión Claude Code: https://claude.ai/code/session_01DGUJFb8c9NYbAFUZLRQfLE
+- **Observaciones de Gemini:** N/A (tarea ejecutada por Claude Code). Bitácora RECONSTRUIDA el 2026-10-01 a partir de los commits y las notas del proyecto, porque en su momento no se escribió.
+- **Respuesta de Gemini:** N/A.
