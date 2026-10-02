@@ -536,3 +536,129 @@ export interface EmployeeSalesResponse {
   }>;
 }
 
+// ---------------------------------------------------------------------------
+// Inventario, Telas y Consumibles (/internal/inventario/*)
+// ---------------------------------------------------------------------------
+export interface InventoryStockItem {
+  sku: string;
+  insumo: string;
+  tipo_insumo: string;
+  unidad: string;
+  departamento: string;
+  stock_total: number;
+  rollos_lotes: number;
+  alerta_bajo: boolean;
+  agotado: boolean;
+}
+
+export interface InventoryStockResponse {
+  success: boolean;
+  id_empresa: number;
+  resumen_por_tipo: Record<string, { total_items: number; stock_total: number }>;
+  filtros: {
+    tipo: string;
+    buscar: string | null;
+    solo_bajo_stock: boolean;
+    umbral: number;
+  };
+  total_resultados: number;
+  items: InventoryStockItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Nómina y Comisiones (/internal/nomina/*)
+// ---------------------------------------------------------------------------
+export interface PayrollConceptItem {
+  concepto: string;
+  cantidad: number;
+  monto: number;
+}
+
+export interface PayrollTaskItem {
+  id_pago: number;
+  id_orden: number | null;
+  concepto: string;
+  monto_pago: number;
+  comision: number;
+  fecha_tarea: string;
+  fecha_pago: string | null;
+  estatus: string;
+}
+
+export interface PayrollEmployeeSummary {
+  id_empleado: number;
+  nombre: string;
+  departamento: string;
+  total_tareas: number;
+  monto_total: number;
+}
+
+export interface EmployeePayrollResponse {
+  success: boolean;
+  id_empresa: number;
+  estado_filtro: 'pendientes' | 'pagadas' | 'todas';
+  // Cuando se consulta un empleado específico:
+  empleado?: {
+    id_usuario: number;
+    nombre: string;
+    departamento: string;
+  };
+  monto_total?: number;
+  total_tareas?: number;
+  desglose_por_concepto?: PayrollConceptItem[];
+  tareas?: PayrollTaskItem[];
+  // Cuando se consulta el resumen global de nómina:
+  gran_total_monto?: number;
+  gran_total_tareas?: number;
+  personal?: PayrollEmployeeSummary[];
+}
+
+// ---------------------------------------------------------------------------
+// Operaciones de Taller y Control de Producción (/internal/taller/*)
+// ---------------------------------------------------------------------------
+export interface DelayedOrderItem {
+  id_orden: number;
+  cliente: string;
+  fecha_entrega: string;
+  dias_retraso: number;
+  departamento_actual: string;
+  pago_total: number;
+  pago_abono: number;
+  saldo_pendiente: number;
+  productos: string;
+}
+
+export interface DelayedOrdersResponse {
+  success: boolean;
+  id_empresa: number;
+  total_retrasadas: number;
+  resumen_por_departamento: Record<string, number>;
+  total_mostradas: number;
+  ordenes: DelayedOrderItem[];
+}
+
+export interface DesignerWorkloadItem {
+  id_empleado: number | null;
+  disenador: string;
+  disenos_activos: number;
+  disenos_terminados: number;
+  propuestas_esperando_cliente: number;
+}
+
+export interface PendingProposalItem {
+  id_revision: number;
+  id_orden: number;
+  cliente: string;
+  disenador: string;
+  fecha_propuesta: string;
+  url_image: string;
+}
+
+export interface DesignerWorkloadResponse {
+  success: boolean;
+  id_empresa: number;
+  total_disenos_activos: number;
+  total_esperando_cliente: number;
+  disenadores: DesignerWorkloadItem[];
+  propuestas_en_espera: PendingProposalItem[];
+}
