@@ -172,3 +172,23 @@ export async function cdnGet<T>(params: Record<string, unknown>): Promise<T> {
     return res.data;
   }, `CDN ${JSON.stringify(params)}`);
 }
+
+/**
+ * POST a un endpoint interno de ninesys-api con el header Authorization:{id_empresa}.
+ */
+export async function apiPost<T>(
+  path: string,
+  idEmpresa: number,
+  data?: unknown
+): Promise<T> {
+  const config: AxiosRequestConfig = {
+    headers: {
+      Authorization: String(idEmpresa),
+      "Content-Type": "application/json",
+    },
+  };
+  return withResilience<T>(async () => {
+    const res = await apiHttp.post<T>(path, data, config);
+    return res.data;
+  }, `POST ${path} emp=${idEmpresa}`);
+}

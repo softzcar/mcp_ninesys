@@ -11,6 +11,7 @@ import { registerEmployeeTools } from "./employees.js";
 import { registerInventoryTools } from "./inventory.js";
 import { registerPayrollTools } from "./payroll.js";
 import { registerOperationTools } from "./operations.js";
+import { registerQuoteTools } from "./quotes.js";
 
 // Contexto de la petición inyectado por el servidor. La empresa se identifica en
 // la capa de acceso (cabecera X-Ninesys-Empresa) y las tools la reciben aquí,
@@ -19,7 +20,7 @@ export interface RequestContext {
   idEmpresa: number;
 }
 
-/** Registra todas las tools de lectura (v1) atadas a la empresa de la petición. */
+/** Registra todas las tools (lectura y mutación de presupuestos) atadas a la empresa de la petición. */
 export function registerAllTools(server: McpServer, ctx: RequestContext): void {
   registerProductTools(server, ctx);
   registerOrderTools(server, ctx);
@@ -33,5 +34,6 @@ export function registerAllTools(server: McpServer, ctx: RequestContext): void {
   registerInventoryTools(server, ctx);
   registerPayrollTools(server, ctx);
   registerOperationTools(server, ctx);
+  registerQuoteTools(server, ctx);
 }
 

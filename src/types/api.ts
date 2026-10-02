@@ -662,3 +662,71 @@ export interface DesignerWorkloadResponse {
   disenadores: DesignerWorkloadItem[];
   propuestas_en_espera: PendingProposalItem[];
 }
+
+// ---------------------------------------------------------------------------
+// Cotizaciones y Creación de Presupuestos (/internal/presupuestos/*)
+// ---------------------------------------------------------------------------
+export interface QuoteItemInput {
+  cod?: number;
+  productoNombre?: string;
+  cantidad: number;
+  talla?: string;
+  corte?: string;
+  tela?: string | number;
+  precio?: number;
+}
+
+export interface QuoteCalculatedItem {
+  cod: number;
+  productoNombre: string;
+  idCategory: number;
+  categoryName: string;
+  cantidad: number;
+  talla: string;
+  sizeId: number | null;
+  corte: string;
+  tela: string;
+  telaId: number | null;
+  precio_base: number;
+  recargo_xl: number;
+  precio_unitario: number;
+  subtotal: number;
+}
+
+export interface CalculateQuoteResponse {
+  success: boolean;
+  id_empresa: number;
+  total: number;
+  total_prendas: number;
+  items: QuoteCalculatedItem[];
+}
+
+export interface CustomerInput {
+  nombre: string;
+  apellido?: string;
+  telefono?: string;
+  cedula?: string;
+  email?: string;
+  direccion?: string;
+}
+
+export interface CreatePresupuestoResponse {
+  success: boolean;
+  id_empresa: number;
+  id_presupuesto: number;
+  cliente: {
+    id_customer: number | null;
+    nombre: string;
+    telefono: string;
+    cedula: string;
+  };
+  responsable: {
+    id_usuario: number | null;
+    nombre: string;
+  };
+  total: number;
+  total_prendas: number;
+  status: string;
+  items: QuoteCalculatedItem[];
+  moment: string;
+}
